@@ -82,8 +82,10 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	for {
 		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
-			ws.Close()
 			// TODO Send close to backend and other cleanup
+			backend.sendClose(uid)
+			ws.Close()
+			return
 		}
 		if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
 			backend.send(uid, string(msg))
@@ -154,7 +156,12 @@ func (m *Multiplexer) initializeConnection() (string, <-chan string) {
 }
 
 func (m *Multiplexer) send(uid, msg string) {
-	message := uid + "||" + msg
+	message := uid + "||1||" + msg
+	m.messagesToBackend <- message
+}
+
+func (m *Multiplexer) sendClose(uid string) {
+	message := uid + "||8||"
 	m.messagesToBackend <- message
 }
 
