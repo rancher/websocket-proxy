@@ -13,7 +13,6 @@ import (
 
 func main() {
 	router := mux.NewRouter()
-	// http.Handle("/", auth.AuthHttpInterceptor(router))
 	http.Handle("/", router)
 
 	backends := make(map[string]*Multiplexer)
@@ -31,11 +30,11 @@ func main() {
 		}
 	}()
 
-	backend := &BackendHandler{
+	backendHandler := &BackendHandler{
 		registerBackEnd: backendRegisterChan,
 	}
 
-	router.Handle("/register", backend).Methods("GET")
+	router.Handle("/register", backendHandler).Methods("GET")
 	router.Handle("/{proxy:.*}", frontend).Methods("GET")
 
 	var listen = "127.0.0.1:1111"
@@ -79,6 +78,8 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}()
 
+	url := req.URL.String()
+	backend.sendConnect(uid, url)
 	for {
 		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
@@ -153,6 +154,11 @@ func (m *Multiplexer) initializeConnection() (string, <-chan string) {
 	clientChan := make(chan string)
 	m.clients[uid] = clientChan
 	return uid, clientChan
+}
+
+func (m *Multiplexer) sendConnect(uid, url string) {
+	message := uid + "||0||" + url
+	m.messagesToBackend <- message
 }
 
 func (m *Multiplexer) send(uid, msg string) {
