@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -140,6 +141,13 @@ func newMultiplexer(backendId string, wsConn *websocket.Conn) *Multiplexer {
 	return m
 }
 
+const (
+	MessageFormat string = "%s||%s||%s"
+	ConnectType          = "0"
+	BodyType             = "1"
+	CloseType            = "2"
+)
+
 type Multiplexer struct {
 	backendId         string
 	messagesToBackend chan string
@@ -153,18 +161,18 @@ func (m *Multiplexer) initializeConnection() (string, <-chan string) {
 	return uid, clientChan
 }
 
-func (m *Multiplexer) sendConnect(uid, url string) {
-	message := uid + "||0||" + url
+func (m *Multiplexer) sendConnect(msgKey, url string) {
+	message := fmt.Sprintf(MessageFormat, msgKey, ConnectType, url)
 	m.messagesToBackend <- message
 }
 
-func (m *Multiplexer) send(uid, msg string) {
-	message := uid + "||1||" + msg
+func (m *Multiplexer) send(msgKey, msg string) {
+	message := fmt.Sprintf(MessageFormat, msgKey, BodyType, msg)
 	m.messagesToBackend <- message
 }
 
-func (m *Multiplexer) sendClose(uid string) {
-	message := uid + "||8||"
+func (m *Multiplexer) sendClose(msgKey string) {
+	message := fmt.Sprintf(MessageFormat, msgKey, BodyType, "")
 	m.messagesToBackend <- message
 }
 

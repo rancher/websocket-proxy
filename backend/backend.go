@@ -89,9 +89,7 @@ func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
 			responders[responderKey] = msgChan
 			go handler.Handle(responderKey, msgChan, responseChannel)
 
-		} else if msgType == 8 {
-			// Using 8 because it parallels the number assigned to close message types
-			// in the websocket protocal, but it's arbitrary.
+		} else if msgType == 2 {
 			if msgChan, ok := responders[responderKey]; ok {
 				close(msgChan)
 			}
