@@ -13,8 +13,7 @@ import (
 )
 
 func TestEndToEnd(t *testing.T) {
-	t.Logf("Starting test...")
-	go StartProxy()
+	go StartProxy("127.0.0.1:1111")
 
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &EchoHandler{}
