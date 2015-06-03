@@ -1,8 +1,6 @@
 package proxy
 
 import (
-	"strings"
-
 	"code.google.com/p/go-uuid/uuid"
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
@@ -13,14 +11,14 @@ import (
 type Multiplexer struct {
 	backendId         string
 	messagesToBackend chan string
-	clients           map[string]chan<- string
+	frontendChans     map[string]chan<- common.Message
 }
 
-func (m *Multiplexer) initializeClient() (string, <-chan string) {
+func (m *Multiplexer) initializeClient() (string, <-chan common.Message) {
 	msgKey := uuid.New()
-	clientChan := make(chan string)
-	m.clients[msgKey] = clientChan
-	return msgKey, clientChan
+	frontendChan := make(chan common.Message)
+	m.frontendChans[msgKey] = frontendChan
+	return msgKey, frontendChan
 }
 
 func (m *Multiplexer) connect(msgKey, url string) {
@@ -40,7 +38,10 @@ func (m *Multiplexer) sendClose(msgKey string) {
 
 func (m *Multiplexer) closeConnection(msgKey string) {
 	m.sendClose(msgKey)
-	delete(m.clients, msgKey)
+	if frontendChan, ok := m.frontendChans[msgKey]; ok {
+		close(frontendChan)
+		delete(m.frontendChans, msgKey)
+	}
 }
 
 func (m *Multiplexer) routeMessages(ws *websocket.Conn) {
@@ -55,16 +56,16 @@ func (m *Multiplexer) routeMessages(ws *websocket.Conn) {
 				continue
 			}
 
-			parts := strings.SplitN(string(msg), common.MessageSeparator, 2)
-			clientKey := parts[0]
-			msgString := parts[1]
-			if client, ok := m.clients[clientKey]; ok {
-				client <- msgString
+			message := common.ParseMessage(string(msg))
+			if frontendChan, ok := m.frontendChans[message.Key]; ok {
+				frontendChan <- message
 			} else {
-				log.WithFields(log.Fields{
-					"key": clientKey,
-				}).Warn("Could not find channel for message. Dropping message and sending close to backend.")
-				m.sendClose(clientKey)
+				if message.Type != common.Close {
+					log.WithFields(log.Fields{
+						"Message": message,
+					}).Warn("Could not find channel for message. Dropping message and sending close to backend.")
+					m.sendClose(message.Key)
+				}
 			}
 		}
 	}()

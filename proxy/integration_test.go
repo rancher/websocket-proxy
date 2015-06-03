@@ -2,7 +2,9 @@ package proxy
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -10,30 +12,63 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/backend"
+	"github.com/rancherio/websocket-proxy/common"
 )
 
-func TestEndToEnd(t *testing.T) {
+func TestMain(m *testing.M) {
 	go StartProxy("127.0.0.1:1111")
 
 	handlers := make(map[string]backend.Handler)
-	handlers["/v1/echo"] = &EchoHandler{}
+	handlers["/v1/echo"] = &echoHandler{}
+	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
+	go backend.ConnectToProxy("ws://localhost:1111/connectbackend", "1", handlers)
+	time.Sleep(100 * time.Millisecond) // Give front and back a chance to initialize
 
-	go backend.ConnectToProxy("ws://localhost:1111/connectbackend", handlers)
-	time.Sleep(300 * time.Millisecond)
+	os.Exit(m.Run())
+}
 
-	url := "ws://localhost:1111/v1/echo?hostId=1"
-	t.Logf("Connecting URL: %s\n", url)
+func TestEndToEnd(t *testing.T) {
+	ws := getClientConnection("ws://localhost:1111/v1/echo?hostId=1", t)
+	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
+	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+}
+
+func TestBackendClosesConnection(t *testing.T) {
+	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
+
+	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := ws.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+
+	if msgType, msgBytes, err := ws.ReadMessage(); err != io.EOF {
+		t.Fatalf("Expected an EOF error to indicate connection was closed. [%v] [%s] [%v]", msgType, msgBytes, err)
+	}
+}
+
+func TestFrontendClosesConnection(t *testing.T) {
+	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
+	if err := ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := ws.ReadMessage(); err == nil {
+		t.Fatal("Expecrted error indicating websocket was closed.")
+	}
+}
+
+func getClientConnection(url string, t *testing.T) *websocket.Conn {
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
 	ws, _, err := dialer.Dial(url, headers)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
-	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
-	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
-
+	return ws
 }
 
 func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
@@ -54,28 +89,49 @@ func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
 	}
 }
 
-type EchoHandler struct {
+type oneAndDoneHandler struct {
 }
 
-func (e *EchoHandler) Handle(key string, incomingMessages <-chan string, response chan<- *backend.MessageWrapper) {
+func (e *oneAndDoneHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+	defer backend.SignalHandlerClosed(key, response)
+	m := <-incomingMessages
+	if m != "" {
+		data := fmt.Sprintf("%s-response", m)
+		wrap := common.Message{
+			Key:  key,
+			Type: common.Body,
+			Body: data,
+		}
+		response <- wrap
+	}
+}
+
+type echoHandler struct {
+}
+
+func (e *echoHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+	defer backend.SignalHandlerClosed(key, response)
 	for {
 		m, ok := <-incomingMessages
 		if !ok {
 			return
 		}
-		data := fmt.Sprintf("%s-response", m)
-		wrap := &backend.MessageWrapper{
-			Key:     key,
-			Message: data,
+		if m != "" {
+			data := fmt.Sprintf("%s-response", m)
+			wrap := common.Message{
+				Key:  key,
+				Type: common.Body,
+				Body: data,
+			}
+			response <- wrap
 		}
-		response <- wrap
 	}
 }
 
 type LogsHandler struct {
 }
 
-func (l *LogsHandler) Handle(key string, incomingMessages <-chan string, response chan<- *backend.MessageWrapper) {
+func (l *LogsHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
 	idx := 0
 	ticker := time.NewTicker(100 * time.Millisecond)
 	msg := ""
@@ -91,9 +147,9 @@ func (l *LogsHandler) Handle(key string, incomingMessages <-chan string, respons
 				msg = "logs"
 			}
 			data := fmt.Sprintf("%s %d", msg, idx)
-			wrap := &backend.MessageWrapper{
-				Key:     key,
-				Message: data,
+			wrap := common.Message{
+				Key:  key,
+				Body: data,
 			}
 			response <- wrap
 		}

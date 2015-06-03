@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
+
+	"github.com/rancherio/websocket-proxy/common"
 )
 
 type BackendHandler struct {
@@ -38,11 +40,11 @@ func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func newMultiplexer(backendId string, wsConn *websocket.Conn) *Multiplexer {
 	msgs := make(chan string, 10)
-	clients := make(map[string]chan<- string)
+	clients := make(map[string]chan<- common.Message)
 	m := &Multiplexer{
 		backendId:         backendId,
 		messagesToBackend: msgs,
-		clients:           clients,
+		frontendChans:     clients,
 	}
 	m.routeMessages(wsConn)
 

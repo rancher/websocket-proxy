@@ -7,21 +7,18 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func StartProxy(listen string) {
-	router := mux.NewRouter()
-	http.Handle("/", router)
-
-	backends := make(map[string]*Multiplexer)
+func StartProxy(listen string) error {
+	backendMultiplexers := make(map[string]*Multiplexer)
 
 	frontend := &FrontendHandler{
-		backends: backends,
+		backendMultiplexers: backendMultiplexers,
 	}
 
 	backendRegisterChan := make(chan *Multiplexer, 10)
 	go func() {
 		for {
 			multiplexer := <-backendRegisterChan
-			backends[multiplexer.backendId] = multiplexer
+			backendMultiplexers[multiplexer.backendId] = multiplexer
 		}
 	}()
 
@@ -29,6 +26,8 @@ func StartProxy(listen string) {
 		registerBackEnd: backendRegisterChan,
 	}
 
+	router := mux.NewRouter()
+	http.Handle("/", router)
 	router.Handle("/connectbackend", backendHandler).Methods("GET")
 	router.Handle("/{proxy:.*}", frontend).Methods("GET")
 
@@ -37,6 +36,8 @@ func StartProxy(listen string) {
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
-		}).Fatal("Failed to start proxy.")
+		}).Info("Exiting proxy.")
 	}
+
+	return err
 }

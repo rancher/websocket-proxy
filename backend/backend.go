@@ -1,35 +1,31 @@
 package backend
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
-	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
+
+	"github.com/rancherio/websocket-proxy/common"
 )
 
 var responders = make(map[string]chan string)
 
 type Handler interface {
-	Handle(string, <-chan string, chan<- *MessageWrapper)
+	Handle(string, <-chan string, chan<- common.Message)
 }
 
-type MessageWrapper struct {
-	Key     string
-	Message string
-}
+func ConnectToProxy(proxyUrl, hostId string, handlers map[string]Handler) {
+	// TODO Limit number of "worker" responders
 
-func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
 	log.WithFields(log.Fields{
 		"url": proxyUrl,
 	}).Info("Connecting to proxy.")
 
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
-	headers.Add("X-Cattle-HostId", "1")
+	headers.Add("X-Cattle-HostId", hostId)
 	ws, _, err := dialer.Dial(proxyUrl, headers)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -37,17 +33,18 @@ func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
 		}).Fatal("Failed to connect to proxy.")
 	}
 
-	responseChannel := make(chan *MessageWrapper, 10)
+	responseChannel := make(chan common.Message, 10)
 
+	// Write messages to proxy
 	go func() {
 		for {
-			wrap := <-responseChannel
-			data := fmt.Sprintf("%s||%s", wrap.Key, wrap.Message)
-
+			message := <-responseChannel
+			data := common.FormatMessage(message.Key, message.Type, message.Body)
 			ws.WriteMessage(1, []byte(data))
 		}
 	}()
 
+	// Read and route messages from proxy
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
@@ -57,49 +54,59 @@ func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
 			continue
 		}
 
-		parts := strings.SplitN(string(msg), "||", 3)
-		if len(parts) != 3 {
-			continue
-		}
-
-		responderKey := parts[0]
-		msgType, err := strconv.Atoi(parts[1])
-		if err != nil {
-			log.WithFields(log.Fields{
-				"error":       err,
-				"messageType": parts[1],
-			}).Warn("Error parsing message type.")
-			continue
-		}
-
-		if msgType == 0 {
-			requestUrl, err := url.Parse(parts[2])
+		message := common.ParseMessage(string(msg))
+		switch message.Type {
+		case common.Connect:
+			requestUrl, err := url.Parse(message.Body)
 			if err != nil {
 				continue
 			}
 			handler, ok := handlers[requestUrl.Path]
-			if !ok {
-				// TODO Tell proxy we quit
+			if ok {
+				msgChan := make(chan string, 10)
+				responders[message.Key] = msgChan
+				go handler.Handle(message.Key, msgChan, responseChannel)
+				// TODO Handle scenario where handler stops responding
+			} else {
 				log.WithFields(log.Fields{
 					"path": requestUrl.Path,
 				}).Warn("Could not find appropriate message handler for supplied path.")
-				continue
+				responseChannel <- common.Message{
+					Key:  message.Key,
+					Type: common.Close,
+					Body: ""}
 			}
-			msgChan := make(chan string, 10)
-			responders[responderKey] = msgChan
-			go handler.Handle(responderKey, msgChan, responseChannel)
-
-		} else if msgType == 2 {
-			if msgChan, ok := responders[responderKey]; ok {
-				close(msgChan)
-			}
-		} else {
-			if msgChan, ok := responders[responderKey]; ok {
-				msgString := parts[2]
-				msgChan <- msgString
+		case common.Body:
+			if msgChan, ok := responders[message.Key]; ok {
+				msgChan <- message.Body
 			} else {
-				// TODO Coudln't find reply channel. Tell proxy we quite.
+				log.WithFields(log.Fields{
+					"key": message.Key,
+				}).Warn("Could not find responder for specified key.")
+				responseChannel <- common.Message{
+					Key:  message.Key,
+					Type: common.Close,
+				}
 			}
+		case common.Close:
+			if msgChan, ok := responders[message.Key]; ok {
+				close(msgChan)
+				delete(responders, message.Key)
+			}
+		default:
+			log.WithFields(log.Fields{
+				"messageType": message.Type,
+			}).Warn("Unrecognized message type.")
+			continue
 		}
 	}
+}
+
+func SignalHandlerClosed(msgKey string, response chan<- common.Message) {
+	wrap := common.Message{
+		Key:  msgKey,
+		Type: common.Close,
+	}
+	response <- wrap
+
 }
