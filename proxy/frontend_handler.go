@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/common"
@@ -14,21 +15,28 @@ type FrontendHandler struct {
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-
+	// TODO With JWT, maybe we can do all the same verification that the Auth interceptor is doing on the backend
+	// Another option is to delay the initial response to the user until after we do an auth check
 	hostKey := h.getHostKey(req)
 	if !h.backend.hasBackend(hostKey) {
+		log.Errorf("Backend not available for key [%v]", hostKey)
 		http.Error(rw, "Bad hostKey", 400)
 		return
 	}
 
-	upgrader := websocket.Upgrader{}
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
 	ws, err := upgrader.Upgrade(rw, req, nil)
 	if err != nil {
+		log.Errorf("Error during upgrade: [%v]", err)
+		http.Error(rw, "Failed to upgrade connection.", 500)
 		return
 	}
 
 	msgKey, respChannel, err := h.backend.initializeClient(hostKey)
 	if err != nil {
+		log.Errorf("Error during initialization: [%v]", err)
 		h.closeConnection(ws)
 		return
 	}
