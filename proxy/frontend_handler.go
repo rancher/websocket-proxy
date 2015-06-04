@@ -75,7 +75,9 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *FrontendHandler) getHostKey(req *http.Request) string {
-	return req.FormValue("hostId")
+	// TODO UNHACK
+	return "1"
+	// return req.FormValue("hostId")
 }
 
 func (h *FrontendHandler) closeConnection(ws *websocket.Conn) {
