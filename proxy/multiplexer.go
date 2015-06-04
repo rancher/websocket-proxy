@@ -40,7 +40,6 @@ func (m *multiplexer) sendClose(msgKey string) {
 }
 
 func (m *multiplexer) closeConnection(msgKey string, notifyBackend bool) {
-	// TODO Does this need a lock?
 	if notifyBackend {
 		m.sendClose(msgKey)
 	}
@@ -77,9 +76,8 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 			m.frontendMu.RUnlock()
 
 			if !ok && message.Type != common.Close {
-				log.WithFields(log.Fields{
-					"Message": message,
-				}).Warn("Could not find channel for message. Dropping message and sending close to backend.")
+				log.WithFields(log.Fields{"Message": message}).Warn(
+					"Could not find channel for message. Dropping message and sending close to backend.")
 				m.sendClose(message.Key)
 			}
 		}
@@ -95,10 +93,7 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 				}
 				err := ws.WriteMessage(websocket.TextMessage, []byte(message))
 				if err != nil {
-					log.WithFields(log.Fields{
-						"error": err,
-						"msg":   message,
-					}).Error("Could not write message.")
+					log.WithFields(log.Fields{"error": err, "msg": message}).Error("Could not write message.")
 				}
 			case <-stop:
 				return

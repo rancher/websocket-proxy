@@ -21,11 +21,7 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-
+	upgrader := websocket.Upgrader{}
 	ws, err := upgrader.Upgrade(rw, req, nil)
 	if err != nil {
 		return

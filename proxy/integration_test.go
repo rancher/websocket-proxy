@@ -128,6 +128,10 @@ func (e *echoHandler) Handle(key string, incomingMessages <-chan string, respons
 	}
 }
 
+/*
+
+TODO Add a test that utilizes this handler and creates a ton of connections
+
 type LogsHandler struct {
 }
 
@@ -157,7 +161,6 @@ func (l *LogsHandler) Handle(key string, incomingMessages <-chan string, respons
 	}
 }
 
-/*
 	count := 0
 	for count <= 10 {
 		if count >= 10 && count%10 == 0 {

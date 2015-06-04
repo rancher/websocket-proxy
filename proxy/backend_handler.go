@@ -16,19 +16,13 @@ func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, "Missing X-Cattle-HostId Header", 400)
 	}
 
-	var upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-
-	upgrader.CheckOrigin = func(req *http.Request) bool {
-		return true
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
 	ws, err := upgrader.Upgrade(rw, req, nil)
 	if err != nil {
-		// TODO Make this better
-		http.Error(rw, "Failed to upgrade", 500)
+		http.Error(rw, "Failed to upgrade connection.", 500)
 		return
 	}
 

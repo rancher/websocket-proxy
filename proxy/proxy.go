@@ -19,27 +19,10 @@ func StartProxy(listen string) error {
 		multiplexers: backendMultiplexers,
 		mu:           &sync.RWMutex{},
 	}
-	frontend := &FrontendHandler{
+
+	frontendHandler := &FrontendHandler{
 		backend: bpm,
 	}
-
-	/*
-			backendRegisterChan := make(chan *Multiplexer, 10)
-			go func() {
-				for {
-					multiplexer := <-backendRegisterChan
-					backendMultiplexers[multiplexer.backendKey] = multiplexer
-				}
-			}()
-
-		backendDropChan := make(chan string, 10)
-		go func() {
-			for {
-				backendKey := <-backendDropChan
-				delete(backendMultiplexers, backendKey)
-			}
-		}()
-	*/
 
 	backendHandler := &BackendHandler{
 		proxyManager: bpm,
@@ -48,14 +31,12 @@ func StartProxy(listen string) error {
 	router := mux.NewRouter()
 	http.Handle("/", router)
 	router.Handle("/connectbackend", backendHandler).Methods("GET")
-	router.Handle("/{proxy:.*}", frontend).Methods("GET")
+	router.Handle("/{proxy:.*}", frontendHandler).Methods("GET")
 
 	err := http.ListenAndServe(listen, nil)
 
 	if err != nil {
-		log.WithFields(log.Fields{
-			"error": err,
-		}).Info("Exiting proxy.")
+		log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
 	}
 
 	return err
