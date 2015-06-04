@@ -10,15 +10,14 @@ import (
 )
 
 type FrontendHandler struct {
-	backendMultiplexers map[string]*Multiplexer
+	backend backendProxy
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
-	hostId := h.getHostId(req)
-	multiplexer, ok := h.backendMultiplexers[hostId]
-	if !ok {
-		http.Error(rw, "Bad hostId", 400)
+	hostKey := h.getHostKey(req)
+	if !h.backend.hasBackend(hostKey) {
+		http.Error(rw, "Bad hostKey", 400)
 		return
 	}
 
@@ -32,7 +31,11 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	msgKey, respChannel := multiplexer.initializeClient()
+	msgKey, respChannel, err := h.backend.initializeClient(hostKey)
+	if err != nil {
+		h.closeConnection(ws)
+		return
+	}
 
 	// Send response messages to client
 	go func() {
@@ -53,23 +56,29 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}()
 
 	url := req.URL.String()
-	multiplexer.connect(msgKey, url)
+	if err = h.backend.connect(hostKey, msgKey, url); err != nil {
+		h.closeConnection(ws)
+		return
+	}
 
 	// Send request messages to backend
 	for {
 		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
-			multiplexer.closeConnection(msgKey)
+			h.backend.closeConnection(hostKey, msgKey)
 			h.closeConnection(ws)
 			return
 		}
 		if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
-			multiplexer.send(msgKey, string(msg))
+			if err = h.backend.send(hostKey, msgKey, string(msg)); err != nil {
+				h.closeConnection(ws)
+				return
+			}
 		}
 	}
 }
 
-func (h *FrontendHandler) getHostId(req *http.Request) string {
+func (h *FrontendHandler) getHostKey(req *http.Request) string {
 	return req.FormValue("hostId")
 }
 

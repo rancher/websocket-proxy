@@ -1,70 +1,60 @@
-package proxy
+package backend
 
 import (
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/backend"
 	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancherio/websocket-proxy/proxy"
 )
 
 func TestMain(m *testing.M) {
-	go StartProxy("127.0.0.1:1111")
-
-	handlers := make(map[string]backend.Handler)
-	handlers["/v1/echo"] = &echoHandler{}
-	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
-	go backend.ConnectToProxy("ws://localhost:1111/connectbackend", "1", handlers)
-	time.Sleep(50 * time.Millisecond) // Give front and back a chance to initialize
+	go proxy.StartProxy("127.0.0.1:2222")
 
 	os.Exit(m.Run())
 }
 
-func TestEndToEnd(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/echo?hostId=1", t)
-	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
-	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
-	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
-}
+func TestBackendGoesAway(t *testing.T) {
+	dialer := &websocket.Dialer{}
+	headers := http.Header{}
+	headers.Add("X-Cattle-HostId", "1")
+	backendWs, _, err := dialer.Dial("ws://localhost:2222/connectbackend", headers)
+	if err != nil {
+		t.Fatal("Failed to connect to proxy.", err)
+	}
 
-func TestBackendClosesConnection(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
+	handlers := make(map[string]Handler)
+	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
+	go connectToProxyWS(backendWs, handlers)
+
+	ws := getClientConnection("ws://localhost:2222/v1/oneanddone?hostId=1", t)
 
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, _, err := ws.ReadMessage(); err != nil {
-		t.Fatal(err)
+	backendWs.Close()
+
+	if _, _, err := ws.ReadMessage(); err != io.EOF {
+		t.Fatal("Expected error indicating websocket was closed.")
 	}
 
-	if msgType, msgBytes, err := ws.ReadMessage(); err != io.EOF {
-		t.Fatalf("Expected an EOF error to indicate connection was closed. [%v] [%s] [%v]", msgType, msgBytes, err)
-	}
-}
-
-func TestFrontendClosesConnection(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
-	if err := ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := ws.ReadMessage(); err == nil {
-		t.Fatal("Expecrted error indicating websocket was closed.")
+	dialer = &websocket.Dialer{}
+	ws, _, err = dialer.Dial("ws://localhost:2222/v1/oneanddone?hostId=1", http.Header{})
+	if ws != nil {
+		t.Fatal("Should not have been able to connect.")
 	}
 }
 
 func getClientConnection(url string, t *testing.T) *websocket.Conn {
 	dialer := &websocket.Dialer{}
-	headers := http.Header{}
-	ws, _, err := dialer.Dial(url, headers)
+	ws, _, err := dialer.Dial(url, http.Header{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +83,7 @@ type oneAndDoneHandler struct {
 }
 
 func (e *oneAndDoneHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
-	defer backend.SignalHandlerClosed(key, response)
+	defer SignalHandlerClosed(key, response)
 	m := <-incomingMessages
 	if m != "" {
 		data := fmt.Sprintf("%s-response", m)
@@ -110,7 +100,7 @@ type echoHandler struct {
 }
 
 func (e *echoHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
-	defer backend.SignalHandlerClosed(key, response)
+	defer SignalHandlerClosed(key, response)
 	for {
 		m, ok := <-incomingMessages
 		if !ok {

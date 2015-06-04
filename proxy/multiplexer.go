@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"sync"
+
 	"code.google.com/p/go-uuid/uuid"
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
@@ -8,78 +10,107 @@ import (
 	"github.com/rancherio/websocket-proxy/common"
 )
 
-type Multiplexer struct {
-	backendId         string
+type multiplexer struct {
+	backendKey        string
 	messagesToBackend chan string
 	frontendChans     map[string]chan<- common.Message
+	proxyManager      proxyManager
+	frontendMu        *sync.RWMutex
 }
 
-func (m *Multiplexer) initializeClient() (string, <-chan common.Message) {
+func (m *multiplexer) initializeClient() (string, <-chan common.Message) {
 	msgKey := uuid.New()
 	frontendChan := make(chan common.Message)
+	m.frontendMu.Lock()
+	defer m.frontendMu.Unlock()
 	m.frontendChans[msgKey] = frontendChan
 	return msgKey, frontendChan
 }
 
-func (m *Multiplexer) connect(msgKey, url string) {
-	message := common.FormatMessage(msgKey, common.Connect, url)
-	m.messagesToBackend <- message
+func (m *multiplexer) connect(msgKey, url string) {
+	m.messagesToBackend <- common.FormatMessage(msgKey, common.Connect, url)
 }
 
-func (m *Multiplexer) send(msgKey, msg string) {
-	message := common.FormatMessage(msgKey, common.Body, msg)
-	m.messagesToBackend <- message
+func (m *multiplexer) send(msgKey, msg string) {
+	m.messagesToBackend <- common.FormatMessage(msgKey, common.Body, msg)
 }
 
-func (m *Multiplexer) sendClose(msgKey string) {
-	message := common.FormatMessage(msgKey, common.Close, "")
-	m.messagesToBackend <- message
+func (m *multiplexer) sendClose(msgKey string) {
+	m.messagesToBackend <- common.FormatMessage(msgKey, common.Close, "")
 }
 
-func (m *Multiplexer) closeConnection(msgKey string) {
-	m.sendClose(msgKey)
+func (m *multiplexer) closeConnection(msgKey string, notifyBackend bool) {
+	// TODO Does this need a lock?
+	if notifyBackend {
+		m.sendClose(msgKey)
+	}
+
 	if frontendChan, ok := m.frontendChans[msgKey]; ok {
-		close(frontendChan)
-		delete(m.frontendChans, msgKey)
+		m.frontendMu.Lock()
+		defer m.frontendMu.Unlock()
+		if _, stillThere := m.frontendChans[msgKey]; stillThere {
+			close(frontendChan)
+			delete(m.frontendChans, msgKey)
+		}
 	}
 }
 
-func (m *Multiplexer) routeMessages(ws *websocket.Conn) {
+func (m *multiplexer) routeMessages(ws *websocket.Conn) {
+	stopSignal := make(chan bool, 1)
+
 	// Read messages from backend
-	go func() {
+	go func(stop chan<- bool) {
 		for {
 			_, msg, err := ws.ReadMessage()
 			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err,
-				}).Error("Error reading message.")
-				continue
+				m.shutdown(stop)
+				return
 			}
 
 			message := common.ParseMessage(string(msg))
-			if frontendChan, ok := m.frontendChans[message.Key]; ok {
+
+			m.frontendMu.RLock()
+			frontendChan, ok := m.frontendChans[message.Key]
+			if ok {
 				frontendChan <- message
-			} else {
-				if message.Type != common.Close {
-					log.WithFields(log.Fields{
-						"Message": message,
-					}).Warn("Could not find channel for message. Dropping message and sending close to backend.")
-					m.sendClose(message.Key)
-				}
+			}
+			m.frontendMu.RUnlock()
+
+			if !ok && message.Type != common.Close {
+				log.WithFields(log.Fields{
+					"Message": message,
+				}).Warn("Could not find channel for message. Dropping message and sending close to backend.")
+				m.sendClose(message.Key)
 			}
 		}
-	}()
+	}(stopSignal)
 
 	// Write messages to backend
-	go func() {
+	go func(stop <-chan bool) {
 		for {
-			message := <-m.messagesToBackend
-			err := ws.WriteMessage(websocket.TextMessage, []byte(message))
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err,
-				}).Error("Error writing message.")
+			select {
+			case message, ok := <-m.messagesToBackend:
+				if !ok {
+					return
+				}
+				err := ws.WriteMessage(websocket.TextMessage, []byte(message))
+				if err != nil {
+					log.WithFields(log.Fields{
+						"error": err,
+						"msg":   message,
+					}).Error("Could not write message.")
+				}
+			case <-stop:
+				return
 			}
 		}
-	}()
+	}(stopSignal)
+}
+
+func (m *multiplexer) shutdown(stop chan<- bool) {
+	m.proxyManager.removeBackend(m.backendKey)
+	stop <- true
+	for k, _ := range m.frontendChans {
+		m.closeConnection(k, false)
+	}
 }

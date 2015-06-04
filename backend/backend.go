@@ -33,12 +33,21 @@ func ConnectToProxy(proxyUrl, hostId string, handlers map[string]Handler) {
 		}).Fatal("Failed to connect to proxy.")
 	}
 
+	connectToProxyWS(ws, handlers)
+}
+
+func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
+	// TODO Limit number of "worker" responders
+
 	responseChannel := make(chan common.Message, 10)
 
 	// Write messages to proxy
 	go func() {
 		for {
-			message := <-responseChannel
+			message, ok := <-responseChannel
+			if !ok {
+				return
+			}
 			data := common.FormatMessage(message.Key, message.Type, message.Body)
 			ws.WriteMessage(1, []byte(data))
 		}
@@ -48,10 +57,9 @@ func ConnectToProxy(proxyUrl, hostId string, handlers map[string]Handler) {
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Warn("Error reading message.")
-			continue
+			// TODO Log? Return Error? Its not really an error, just the ws was closed.
+			close(responseChannel)
+			return
 		}
 
 		message := common.ParseMessage(string(msg))
