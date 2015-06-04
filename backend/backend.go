@@ -13,7 +13,7 @@ import (
 // Implement this iterface and pass implementations into ConnectToProxy() to have messages
 // routed to and from the handler.
 type Handler interface {
-	Handle(string, <-chan string, chan<- common.Message)
+	Handle(messageKey string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message)
 }
 
 func ConnectToProxy(proxyUrl, hostId string, handlers map[string]Handler) {
@@ -70,7 +70,7 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 			if ok {
 				msgChan := make(chan string, 10)
 				responders[message.Key] = msgChan
-				go handler.Handle(message.Key, msgChan, responseChannel)
+				go handler.Handle(message.Key, message.Body, msgChan, responseChannel)
 			} else {
 				log.WithFields(log.Fields{"path": requestUrl.Path}).Warn("Could not find appropriate message handler for supplied path.")
 				responseChannel <- common.Message{

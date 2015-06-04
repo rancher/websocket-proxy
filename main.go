@@ -1,9 +1,15 @@
 package main
 
 import (
-	"fmt"
+	log "github.com/Sirupsen/logrus"
+
+	"github.com/rancherio/websocket-proxy/proxy"
 )
 
 func main() {
-	fmt.Println("Check back later.")
+	log.Info("Starting proxy...")
+
+	err := proxy.StartProxy("127.0.0.1:5555")
+
+	log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
 }

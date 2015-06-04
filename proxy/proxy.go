@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"sync"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
@@ -34,10 +33,6 @@ func StartProxy(listen string) error {
 	router.Handle("/{proxy:.*}", frontendHandler).Methods("GET")
 
 	err := http.ListenAndServe(listen, nil)
-
-	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
-	}
 
 	return err
 }

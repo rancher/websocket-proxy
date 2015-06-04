@@ -92,7 +92,7 @@ func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
 type oneAndDoneHandler struct {
 }
 
-func (e *oneAndDoneHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+func (e *oneAndDoneHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
 	defer backend.SignalHandlerClosed(key, response)
 	m := <-incomingMessages
 	if m != "" {
@@ -109,7 +109,7 @@ func (e *oneAndDoneHandler) Handle(key string, incomingMessages <-chan string, r
 type echoHandler struct {
 }
 
-func (e *echoHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
 	defer backend.SignalHandlerClosed(key, response)
 	for {
 		m, ok := <-incomingMessages
@@ -135,7 +135,7 @@ TODO Add a test that utilizes this handler and creates a ton of connections
 type LogsHandler struct {
 }
 
-func (l *LogsHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+func (l *LogsHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
 	idx := 0
 	ticker := time.NewTicker(100 * time.Millisecond)
 	msg := ""

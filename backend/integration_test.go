@@ -64,7 +64,7 @@ func getClientConnection(url string, t *testing.T) *websocket.Conn {
 type echoHandler struct {
 }
 
-func (e *echoHandler) Handle(key string, incomingMessages <-chan string, response chan<- common.Message) {
+func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
 	defer SignalHandlerClosed(key, response)
 	for {
 		m, ok := <-incomingMessages
