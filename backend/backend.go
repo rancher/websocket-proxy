@@ -3,6 +3,7 @@ package backend
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
@@ -66,7 +67,8 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 			if err != nil {
 				continue
 			}
-			handler, ok := handlers[requestUrl.Path]
+
+			handler, ok := getHandler(requestUrl.Path, handlers)
 			if ok {
 				msgChan := make(chan string, 10)
 				responders[message.Key] = msgChan
@@ -97,6 +99,25 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 			continue
 		}
 	}
+}
+
+// Returns the handler that best matches the provided path and true if one is found,
+// otherwise returns nil and false. This function is not robust enough to handle
+// pattern matching. If it can't find an exact match, it will look for a handler that
+// is a prefix for path. So, '/v1/stats/' will be a match for '/v1/stats/id-123'
+func getHandler(path string, handlers map[string]Handler) (Handler, bool) {
+	if handler, ok := handlers[path]; ok {
+		return handler, true
+	}
+
+	path = strings.TrimSuffix(path, "/")
+	for key, handler := range handlers {
+		key = strings.TrimSuffix(key, "/")
+		if strings.HasPrefix(path, key) {
+			return handler, true
+		}
+	}
+	return nil, false
 }
 
 func closeHandler(responders map[string]chan string, msgKey string) {
