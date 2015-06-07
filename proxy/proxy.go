@@ -11,8 +11,7 @@ import (
 	"github.com/rancherio/websocket-proxy/common"
 )
 
-func StartProxy(listen string) error {
-
+func StartProxy(listen string, config *Config) error {
 	backendMultiplexers := make(map[string]*multiplexer)
 	bpm := &backendProxyManager{
 		multiplexers: backendMultiplexers,
@@ -20,7 +19,8 @@ func StartProxy(listen string) error {
 	}
 
 	frontendHandler := &FrontendHandler{
-		backend: bpm,
+		backend:         bpm,
+		parsedPublicKey: config.PublicKey,
 	}
 
 	backendHandler := &BackendHandler{

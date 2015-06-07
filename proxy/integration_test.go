@@ -9,14 +9,20 @@ import (
 	"testing"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/backend"
 	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancherio/websocket-proxy/test_utils"
 )
 
+var privateKey interface{}
+
 func TestMain(m *testing.M) {
-	go StartProxy("127.0.0.1:1111")
+	c := getTestConfig()
+	privateKey = test_utils.ParseTestPrivateKey()
+	go StartProxy("127.0.0.1:1111", c)
 
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &echoHandler{}
@@ -28,14 +34,16 @@ func TestMain(m *testing.M) {
 }
 
 func TestEndToEnd(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/echo?hostId=1", t)
+	signedToken := test_utils.CreateToken("1", privateKey)
+	ws := getClientConnection("ws://localhost:1111/v1/echo?token="+signedToken, t)
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 }
 
 func TestBackendClosesConnection(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
+	signedToken := test_utils.CreateToken("1", privateKey)
+	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?token="+signedToken, t)
 
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
 		t.Fatal(err)
@@ -51,7 +59,8 @@ func TestBackendClosesConnection(t *testing.T) {
 }
 
 func TestFrontendClosesConnection(t *testing.T) {
-	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?hostId=1", t)
+	signedToken := test_utils.CreateToken("1", privateKey)
+	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?token="+signedToken, t)
 	if err := ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +135,17 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 			response <- wrap
 		}
 	}
+}
+
+func getTestConfig() *Config {
+	config := &Config{}
+
+	pubKey, err := ParsePublicKey("../test_utils/public.pem")
+	if err != nil {
+		log.Fatal("Failed to parse key. ", err)
+	}
+	config.PublicKey = pubKey
+	return config
 }
 
 /*

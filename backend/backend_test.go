@@ -7,14 +7,20 @@ import (
 	"os"
 	"testing"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/common"
 	"github.com/rancherio/websocket-proxy/proxy"
+	"github.com/rancherio/websocket-proxy/test_utils"
 )
 
+var privateKey interface{}
+
 func TestMain(m *testing.M) {
-	go proxy.StartProxy("127.0.0.1:2222")
+	c := getTestConfig()
+	privateKey = test_utils.ParseTestPrivateKey()
+	go proxy.StartProxy("127.0.0.1:2222", c)
 
 	os.Exit(m.Run())
 }
@@ -32,7 +38,9 @@ func TestBackendGoesAway(t *testing.T) {
 	handlers["/v1/echo"] = &echoHandler{}
 	go connectToProxyWS(backendWs, handlers)
 
-	ws := getClientConnection("ws://localhost:2222/v1/echo?hostId=1", t)
+	signedToken := test_utils.CreateToken("1", privateKey)
+	url := "ws://localhost:2222/v1/echo?token=" + signedToken
+	ws := getClientConnection(url, t)
 
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
 		t.Fatal(err)
@@ -45,7 +53,7 @@ func TestBackendGoesAway(t *testing.T) {
 	}
 
 	dialer = &websocket.Dialer{}
-	ws, _, err = dialer.Dial("ws://127.0.0.1:2222/v1/oneanddone?hostId=1", http.Header{})
+	ws, _, err = dialer.Dial(url, http.Header{})
 	if ws != nil || err != websocket.ErrBadHandshake {
 		t.Fatal("Should not have been able to connect.")
 	}
@@ -129,4 +137,15 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 			response <- wrap
 		}
 	}
+}
+
+func getTestConfig() *proxy.Config {
+	config := &proxy.Config{}
+
+	pubKey, err := proxy.ParsePublicKey("../test_utils/public.pem")
+	if err != nil {
+		log.Fatal("Failed to parse key. ", err)
+	}
+	config.PublicKey = pubKey
+	return config
 }

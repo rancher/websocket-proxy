@@ -9,7 +9,12 @@ import (
 func main() {
 	log.Info("Starting proxy...")
 
-	err := proxy.StartProxy("127.0.0.1:9345")
+	conf, err := proxy.GetConfig()
+	if err != nil {
+		log.WithField("error", err).Fatal("Error getting config.")
+	}
+
+	err = proxy.StartProxy("127.0.0.1:9345", conf)
 
 	log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
 }

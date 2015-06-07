@@ -5,22 +5,28 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/common"
 )
 
 type FrontendHandler struct {
-	backend backendProxy
+	backend         backendProxy
+	parsedPublicKey interface{}
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	// TODO With JWT, maybe we can do all the same verification that the Auth interceptor is doing on the backend
-	// Another option is to delay the initial response to the user until after we do an auth check
-	hostKey := h.getHostKey(req)
-	if !h.backend.hasBackend(hostKey) {
-		log.Errorf("Backend not available for key [%v]", hostKey)
-		http.Error(rw, "Bad hostKey", 400)
+	startTime := time.Now()
+	defer func() {
+		finishTime := time.Now()
+		elapsedTime := finishTime.Sub(startTime)
+		logAccess(rw, req, elapsedTime)
+	}()
+
+	hostKey, authed := h.auth(req)
+	if !authed {
+		http.Error(rw, "Failed authentication", 401)
 		return
 	}
 
@@ -82,10 +88,33 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (h *FrontendHandler) getHostKey(req *http.Request) string {
-	// TODO UNHACK
-	return "1"
-	// return req.FormValue("hostId")
+func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
+	tokenString := req.URL.Query().Get("token")
+
+	if len(tokenString) == 0 {
+		return "", false
+	}
+
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return h.parsedPublicKey, nil
+	})
+	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
+		return "", false
+	}
+
+	if !token.Valid {
+		return "", false
+	}
+
+	var hostUuid string
+	if hostUuid, found := token.Claims["hostUuid"]; found {
+		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
+			return hostKey, true
+		}
+	}
+	log.WithFields(log.Fields{"hostUuid": hostUuid}).Errorf("Invalid backend host requested.")
+	return "", false
 }
 
 func (h *FrontendHandler) closeConnection(ws *websocket.Conn) {
