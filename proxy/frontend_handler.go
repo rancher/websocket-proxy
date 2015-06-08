@@ -107,8 +107,8 @@ func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 		return "", false
 	}
 
-	var hostUuid string
-	if hostUuid, found := token.Claims["hostUuid"]; found {
+	hostUuid, found := token.Claims["hostUuid"]
+	if found {
 		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
 			return hostKey, true
 		}
