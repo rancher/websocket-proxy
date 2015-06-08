@@ -11,13 +11,15 @@ import (
 )
 
 type Config struct {
-	PublicKey interface{}
+	PublicKey  interface{}
+	ListenAddr string
 }
 
 func GetConfig() (*Config, error) {
 	c := &Config{}
 	var keyFile string
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
+	flag.StringVar(&c.ListenAddr, "listen-address", "localhost:8080", "The tcp address to listen on.")
 
 	confOptions := &globalconf.Options{
 		EnvPrefix: "PROXY_",

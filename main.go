@@ -14,7 +14,7 @@ func main() {
 		log.WithField("error", err).Fatal("Error getting config.")
 	}
 
-	err = proxy.StartProxy("127.0.0.1:9345", conf)
+	err = proxy.StartProxy(conf.ListenAddr, conf)
 
 	log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
 }
