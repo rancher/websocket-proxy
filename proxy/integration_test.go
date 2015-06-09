@@ -83,6 +83,20 @@ func TestEndToEnd(t *testing.T) {
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 }
 
+func TestAuthHeaderBearerToken(t *testing.T) {
+	signedToken := test_utils.CreateToken("1", privateKey)
+	dialer := &websocket.Dialer{}
+	headers := http.Header{}
+	headers.Add("Authorization", "Bearer "+signedToken)
+	ws, _, err := dialer.Dial("ws://localhost:1111/v1/echo", headers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
+	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+}
+
 func TestBackendClosesConnection(t *testing.T) {
 	signedToken := test_utils.CreateToken("1", privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?token="+signedToken, t)

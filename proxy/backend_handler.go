@@ -35,13 +35,9 @@ func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *BackendHandler) auth(req *http.Request) (string, bool) {
-	tokenString := req.URL.Query().Get("token")
-	if len(tokenString) == 0 {
-		return "", false
-	}
-
-	token, err := parseToken(tokenString, h.parsedPublicKey)
+	token, err := parseToken(req, h.parsedPublicKey)
 	if err != nil {
+		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
 		return "", false
 	}
 
