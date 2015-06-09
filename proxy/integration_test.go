@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 	ps := &ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
 		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone"},
-		CattleWSProxyPaths: []string{"/{cattle-wsproxy/v1/subscribe*}"},
+		CattleWSProxyPaths: []string{"/v1/subscribe"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             c,
 	}
@@ -127,7 +127,7 @@ func TestCattleProxy(t *testing.T) {
 }
 
 func TestCattleWsProxy(t *testing.T) {
-	ws := getClientConnection("ws://localhost:3333/v1/subscribe", t)
+	ws := getClientConnection("ws://localhost:1111/v1/subscribe", t)
 	_, msg, err := ws.ReadMessage()
 	if err != nil {
 		t.Fatal(err)
