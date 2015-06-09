@@ -50,12 +50,14 @@ func (s *ProxyStarter) StartProxy() error {
 		router.Handle(p, frontendHandler).Methods("GET")
 	}
 
-	for _, p := range s.CattleWSProxyPaths {
-		router.Handle(p, cattleWsProxy)
-	}
+	if s.Config.CattleAddr != "" {
+		for _, p := range s.CattleWSProxyPaths {
+			router.Handle(p, cattleWsProxy)
+		}
 
-	for _, p := range s.CattleProxyPaths {
-		router.Handle(p, cattleProxy)
+		for _, p := range s.CattleProxyPaths {
+			router.Handle(p, cattleProxy)
+		}
 	}
 
 	pcRouter := &pathCleaner{

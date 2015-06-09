@@ -21,7 +21,7 @@ func GetConfig() (*Config, error) {
 	var keyFile string
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
 	flag.StringVar(&c.ListenAddr, "listen-address", "localhost:8080", "The tcp address to listen on.")
-	flag.StringVar(&c.CattleAddr, "cattle-address", "localhost:8081", "The tcp address to forward cattle API requests to.")
+	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
 
 	confOptions := &globalconf.Options{
 		EnvPrefix: "PROXY_",
