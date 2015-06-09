@@ -20,7 +20,13 @@ var privateKey interface{}
 func TestMain(m *testing.M) {
 	c := getTestConfig()
 	privateKey = test_utils.ParseTestPrivateKey()
-	go proxy.StartProxy("127.0.0.1:2222", c)
+
+	ps := &proxy.ProxyStarter{
+		BackendPaths:  []string{"/v1/connectbackend"},
+		FrontendPaths: []string{"/v1/echo"},
+		Config:        c,
+	}
+	go ps.StartProxy()
 
 	os.Exit(m.Run())
 }
@@ -29,7 +35,7 @@ func TestBackendGoesAway(t *testing.T) {
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
 	headers.Add("X-Cattle-HostId", "1")
-	backendWs, _, err := dialer.Dial("ws://127.0.0.1:2222/connectbackend", headers)
+	backendWs, _, err := dialer.Dial("ws://127.0.0.1:2222/v1/connectbackend", headers)
 	if err != nil {
 		t.Fatal("Failed to connect to proxy.", err)
 	}
@@ -140,7 +146,9 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 }
 
 func getTestConfig() *proxy.Config {
-	config := &proxy.Config{}
+	config := &proxy.Config{
+		ListenAddr: "127.0.0.1:2222",
+	}
 
 	pubKey, err := proxy.ParsePublicKey("../test_utils/public.pem")
 	if err != nil {

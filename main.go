@@ -14,7 +14,15 @@ func main() {
 		log.WithField("error", err).Fatal("Error getting config.")
 	}
 
-	err = proxy.StartProxy(conf.ListenAddr, conf)
+	p := &proxy.ProxyStarter{
+		BackendPaths:       []string{"/v1/connectbackend"},
+		FrontendPaths:      []string{"/v1/{logs:logs}/", "/v1/{stats:stats}", "/v1/{stats:stats}/{statsid}"},
+		CattleWSProxyPaths: []string{"/v1/{sub:subscribe}"},
+		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
+		Config:             conf,
+	}
+
+	err = p.StartProxy()
 
 	log.WithFields(log.Fields{"error": err}).Info("Exiting proxy.")
 }

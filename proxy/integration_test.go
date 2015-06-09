@@ -3,13 +3,16 @@ package proxy
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
 	"github.com/rancherio/websocket-proxy/backend"
@@ -22,15 +25,52 @@ var privateKey interface{}
 func TestMain(m *testing.M) {
 	c := getTestConfig()
 	privateKey = test_utils.ParseTestPrivateKey()
-	go StartProxy("127.0.0.1:1111", c)
+
+	ps := &ProxyStarter{
+		BackendPaths:       []string{"/v1/connectbackend"},
+		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone"},
+		CattleWSProxyPaths: []string{"/{cattle-wsproxy/v1/subscribe*}"},
+		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
+		Config:             c,
+	}
+	go ps.StartProxy()
 
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &echoHandler{}
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
-	go backend.ConnectToProxy("ws://localhost:1111/connectbackend", "1", handlers)
+	go backend.ConnectToProxy("ws://localhost:1111/v1/connectbackend", "1", handlers)
+
+	router := mux.NewRouter()
+	router.HandleFunc("/v1/subscribe", getWsHandler())
+	router.HandleFunc("/{foo:.*}", func(rw http.ResponseWriter, req *http.Request) {
+		rw.Write([]byte("SUCCESS"))
+	})
+	go http.ListenAndServe("127.0.0.1:3333", router)
+
 	time.Sleep(50 * time.Millisecond) // Give front and back a chance to initialize
 
 	os.Exit(m.Run())
+}
+
+func getWsHandler() func(rw http.ResponseWriter, req *http.Request) {
+	return func(rw http.ResponseWriter, req *http.Request) {
+		if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+			rw.Write([]byte("SUCCESS"))
+			return
+		}
+
+		upgrader := websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		}
+
+		ws, err := upgrader.Upgrade(rw, req, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		ws.WriteMessage(websocket.TextMessage, []byte("WSSUCCESS"))
+		ws.Close()
+	}
 }
 
 func TestEndToEnd(t *testing.T) {
@@ -67,6 +107,47 @@ func TestFrontendClosesConnection(t *testing.T) {
 
 	if _, _, err := ws.ReadMessage(); err == nil {
 		t.Fatal("Expecrted error indicating websocket was closed.")
+	}
+}
+
+func TestCattleProxy(t *testing.T) {
+	resp, err := http.Get("http://localhost:1111/v1/foo1")
+	assertProxyResponse(resp, err, t)
+
+	req, err := http.NewRequest("PUT", "http://localhost:1111/v1///foo2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{}
+	resp, err = client.Do(req)
+	assertProxyResponse(resp, err, t)
+
+	resp, err = http.Get("http://localhost:1111/v1/subscribe")
+	assertProxyResponse(resp, err, t)
+}
+
+func TestCattleWsProxy(t *testing.T) {
+	ws := getClientConnection("ws://localhost:3333/v1/subscribe", t)
+	_, msg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(msg) != "WSSUCCESS" {
+		t.Fatal("Unexpected message ", msg)
+	}
+
+}
+
+func assertProxyResponse(resp *http.Response, err error, t *testing.T) {
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatal("Bad response. ", resp, err)
+	}
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "SUCCESS" {
+		t.Fatal("Unexpected body ", b)
 	}
 }
 
@@ -138,13 +219,16 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 }
 
 func getTestConfig() *Config {
-	config := &Config{}
 
 	pubKey, err := ParsePublicKey("../test_utils/public.pem")
 	if err != nil {
 		log.Fatal("Failed to parse key. ", err)
 	}
-	config.PublicKey = pubKey
+	config := &Config{
+		PublicKey:  pubKey,
+		ListenAddr: "127.0.0.1:1111",
+		CattleAddr: "127.0.0.1:3333",
+	}
 	return config
 }
 

@@ -1,17 +1,31 @@
 package proxy
 
 import (
-	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"net/http/httputil"
+	_ "net/url"
+	"regexp"
+	"strings"
 	"sync"
+	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
-
-	"github.com/rancherio/websocket-proxy/common"
 )
 
-func StartProxy(listen string, config *Config) error {
+var slashRegex = regexp.MustCompile("[/]{2,}")
+
+type ProxyStarter struct {
+	BackendPaths       []string
+	FrontendPaths      []string
+	CattleProxyPaths   []string
+	CattleWSProxyPaths []string
+	Config             *Config
+}
+
+func (s *ProxyStarter) StartProxy() error {
 	backendMultiplexers := make(map[string]*multiplexer)
 	bpm := &backendProxyManager{
 		multiplexers: backendMultiplexers,
@@ -20,111 +34,129 @@ func StartProxy(listen string, config *Config) error {
 
 	frontendHandler := &FrontendHandler{
 		backend:         bpm,
-		parsedPublicKey: config.PublicKey,
+		parsedPublicKey: s.Config.PublicKey,
 	}
 
 	backendHandler := &BackendHandler{
 		proxyManager: bpm,
 	}
 
+	cattleProxy, cattleWsProxy := newCattleProxies(s.Config.CattleAddr)
+
 	router := mux.NewRouter()
-	http.Handle("/", router)
-	router.Handle("/connectbackend", backendHandler).Methods("GET")
-	router.Handle("/{proxy:.*}", frontendHandler).Methods("GET")
+	for _, p := range s.BackendPaths {
+		router.Handle(p, backendHandler).Methods("GET")
+	}
+	for _, p := range s.FrontendPaths {
+		router.Handle(p, frontendHandler).Methods("GET")
+	}
 
-	err := http.ListenAndServe(listen, nil)
+	for _, p := range s.CattleWSProxyPaths {
+		router.Handle(p, cattleWsProxy)
+	}
 
+	for _, p := range s.CattleProxyPaths {
+		router.Handle(p, cattleProxy)
+	}
+
+	pcRouter := &pathCleaner{
+		router: router,
+	}
+
+	server := &http.Server{
+		Handler:        pcRouter,
+		Addr:           s.Config.ListenAddr,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+	err := server.ListenAndServe()
 	return err
 }
 
-type backendProxy interface {
-	initializeClient(backendKey string) (string, <-chan common.Message, error)
-	connect(backendKey, msgKey, url string) error
-	send(backendKey, msgKey, msg string) error
-	closeConnection(backendKey, msgKey string) error
-	hasBackend(backendKey string) bool
+type pathCleaner struct {
+	router *mux.Router
 }
 
-type proxyManager interface {
-	addBackend(backendKey string, ws *websocket.Conn)
-	removeBackend(backendKey string)
+func (p *pathCleaner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if cleanedPath := p.cleanPath(req.URL.Path); cleanedPath != req.URL.Path {
+		req.URL.Path = cleanedPath
+		req.URL.Scheme = "http"
+	}
+	p.router.ServeHTTP(rw, req)
 }
 
-type backendProxyManager struct {
-	multiplexers map[string]*multiplexer
-	mu           *sync.RWMutex
+func (p *pathCleaner) cleanPath(path string) string {
+	return slashRegex.ReplaceAllString(path, "/")
 }
 
-func (b *backendProxyManager) initializeClient(backendKey string) (string, <-chan common.Message, error) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	multiplexer, ok := b.multiplexers[backendKey]
+func newCattleProxies(cattleAddr string) (*httputil.ReverseProxy, *cattleWSProxy) {
+	director := func(req *http.Request) {
+		// TODO Do I need to set X-Forwarded-For and X-Forwarded-Host?
+		req.URL.Scheme = "http"
+		req.URL.Host = cattleAddr
+	}
+	cattleProxy := &httputil.ReverseProxy{
+		Director: director,
+	}
+
+	wsProxy := &cattleWSProxy{
+		reverseProxy: cattleProxy,
+		cattleAddr:   cattleAddr,
+	}
+
+	return cattleProxy, wsProxy
+}
+
+type cattleWSProxy struct {
+	reverseProxy *httputil.ReverseProxy
+	cattleAddr   string
+}
+
+func (h *cattleWSProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+		h.serveWebsocket(rw, req)
+	} else {
+		h.reverseProxy.ServeHTTP(rw, req)
+	}
+}
+
+func (h *cattleWSProxy) serveWebsocket(rw http.ResponseWriter, req *http.Request) {
+	// TODO Document where I found this.
+	target := h.cattleAddr
+	// target := "[localhost]:8081"
+	d, err := net.Dial("tcp", target)
+	if err != nil {
+		log.WithField("error", err).Error("Error dialing websocket backend.")
+		http.Error(rw, "Unable to establish websocket connection.", 500)
+		return
+	}
+	hj, ok := rw.(http.Hijacker)
 	if !ok {
-		return "", nil, fmt.Errorf("No backend for key [%v]", backendKey)
+		http.Error(rw, "Unable to establish websocket connection.", 500)
+		return
 	}
-	msgKey, msgChan := multiplexer.initializeClient()
-	return msgKey, msgChan, nil
-}
-
-func (b *backendProxyManager) connect(backendKey, msgKey, url string) error {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	multiplexer, ok := b.multiplexers[backendKey]
-	if !ok {
-		return fmt.Errorf("No backend for key [%v]", backendKey)
+	nc, _, err := hj.Hijack()
+	if err != nil {
+		log.WithField("error", err).Error("Hijack error.")
+		http.Error(rw, "Unable to establish websocket connection.", 500)
+		return
 	}
-	multiplexer.connect(msgKey, url)
-	return nil
-}
+	defer nc.Close()
+	defer d.Close()
 
-func (b *backendProxyManager) send(backendKey, msgKey, msg string) error {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	multiplexer, ok := b.multiplexers[backendKey]
-	if !ok {
-		return fmt.Errorf("No backend for key [%v]", backendKey)
+	err = req.Write(d)
+	if err != nil {
+		log.WithField("error", err).Error("Error copying request to target.")
+		return
 	}
-	multiplexer.send(msgKey, msg)
-	return nil
-}
 
-func (b *backendProxyManager) closeConnection(backendKey, msgKey string) error {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	multiplexer, ok := b.multiplexers[backendKey]
-	if !ok {
-		return fmt.Errorf("No backend for key [%v]", backendKey)
+	errc := make(chan error, 2)
+	cp := func(dst io.Writer, src io.Reader) {
+		_, err := io.Copy(dst, src)
+		errc <- err
 	}
-	multiplexer.closeConnection(msgKey, true)
-	return nil
-}
-
-func (b *backendProxyManager) hasBackend(backendKey string) bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-	_, ok := b.multiplexers[backendKey]
-	return ok
-}
-
-func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) {
-	msgs := make(chan string, 10)
-	clients := make(map[string]chan<- common.Message)
-	m := &multiplexer{
-		backendKey:        backendKey,
-		messagesToBackend: msgs,
-		frontendChans:     clients,
-		proxyManager:      b,
-		frontendMu:        &sync.RWMutex{},
-	}
-	m.routeMessages(ws)
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.multiplexers[backendKey] = m
-}
-
-func (b *backendProxyManager) removeBackend(backendKey string) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	delete(b.multiplexers, backendKey)
+	go cp(d, nc)
+	go cp(nc, d)
+	<-errc
 }
