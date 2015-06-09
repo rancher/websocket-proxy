@@ -38,7 +38,9 @@ func TestMain(m *testing.M) {
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &echoHandler{}
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
-	go backend.ConnectToProxy("ws://localhost:1111/v1/connectbackend", "1", handlers)
+	signedToken := test_utils.CreateBackendToken("1", privateKey)
+	url := "ws://localhost:1111/v1/connectbackend?token=" + signedToken
+	go backend.ConnectToProxy(url, handlers)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/v1/subscribe", getWsHandler())

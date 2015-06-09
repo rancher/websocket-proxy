@@ -36,7 +36,8 @@ func (s *ProxyStarter) StartProxy() error {
 	}
 
 	backendHandler := &BackendHandler{
-		proxyManager: bpm,
+		proxyManager:    bpm,
+		parsedPublicKey: s.Config.PublicKey,
 	}
 
 	cattleProxy, cattleWsProxy := newCattleProxies(s.Config.CattleAddr)

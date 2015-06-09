@@ -17,14 +17,13 @@ type Handler interface {
 	Handle(messageKey string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message)
 }
 
-func ConnectToProxy(proxyUrl, hostId string, handlers map[string]Handler) {
+func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
 	// TODO Limit number of "worker" responders
 
 	log.WithFields(log.Fields{"url": proxyUrl}).Info("Connecting to proxy.")
 
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
-	headers.Add("X-Cattle-HostId", hostId)
 	ws, _, err := dialer.Dial(proxyUrl, headers)
 	if err != nil {
 		log.WithFields(log.Fields{

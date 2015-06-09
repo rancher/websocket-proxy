@@ -17,6 +17,16 @@ func CreateToken(hostUuid string, privateKey interface{}) string {
 	return signed
 }
 
+func CreateBackendToken(reportedUuid string, privateKey interface{}) string {
+	token := jwt.New(jwt.GetSigningMethod("RS256"))
+	token.Claims["reportedUuid"] = reportedUuid
+	signed, err := token.SignedString(privateKey)
+	if err != nil {
+		log.Fatal("Failed to parse private key.", err)
+	}
+	return signed
+}
+
 func ParseTestPrivateKey() interface{} {
 	keyBytes, err := ioutil.ReadFile("../test_utils/private.pem")
 	if err != nil {

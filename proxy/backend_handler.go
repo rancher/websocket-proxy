@@ -8,14 +8,15 @@ import (
 )
 
 type BackendHandler struct {
-	proxyManager proxyManager
+	proxyManager    proxyManager
+	parsedPublicKey interface{}
 }
 
 func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	hostKey := req.Header.Get("X-Cattle-HostId")
-	if hostKey == "" {
-		log.Errorf("No hostKey provided in backend connection request.")
-		http.Error(rw, "Missing X-Cattle-HostId Header", 422)
+	hostKey, authed := h.auth(req)
+	if !authed {
+		http.Error(rw, "Failed authentication", 401)
+		return
 	}
 
 	upgrader := websocket.Upgrader{
@@ -31,4 +32,28 @@ func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	log.Infof("Registering backend for host [%v]", hostKey)
 	h.proxyManager.addBackend(hostKey, ws)
+}
+
+func (h *BackendHandler) auth(req *http.Request) (string, bool) {
+	tokenString := req.URL.Query().Get("token")
+	if len(tokenString) == 0 {
+		return "", false
+	}
+
+	token, err := parseToken(tokenString, h.parsedPublicKey)
+	if err != nil {
+		return "", false
+	}
+
+	reportedUuid, found := token.Claims["reportedUuid"]
+	if !found {
+		return "", false
+	}
+
+	hostKey, ok := reportedUuid.(string)
+	if !ok || hostKey == "" {
+		return "", false
+	}
+
+	return hostKey, true
 }

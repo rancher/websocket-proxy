@@ -90,14 +90,11 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 	tokenString := req.URL.Query().Get("token")
-
 	if len(tokenString) == 0 {
 		return "", false
 	}
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return h.parsedPublicKey, nil
-	})
+	token, err := parseToken(tokenString, h.parsedPublicKey)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
 		return "", false
@@ -120,4 +117,11 @@ func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 func (h *FrontendHandler) closeConnection(ws *websocket.Conn) {
 	ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
 	ws.Close()
+}
+
+func parseToken(tokenString string, parsedPublicKey interface{}) (*jwt.Token, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		return parsedPublicKey, nil
+	})
+	return token, err
 }

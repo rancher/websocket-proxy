@@ -34,8 +34,9 @@ func TestMain(m *testing.M) {
 func TestBackendGoesAway(t *testing.T) {
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
-	headers.Add("X-Cattle-HostId", "1")
-	backendWs, _, err := dialer.Dial("ws://127.0.0.1:2222/v1/connectbackend", headers)
+	signedToken := test_utils.CreateBackendToken("1", privateKey)
+	url := "ws://localhost:2222/v1/connectbackend?token=" + signedToken
+	backendWs, _, err := dialer.Dial(url, headers)
 	if err != nil {
 		t.Fatal("Failed to connect to proxy.", err)
 	}
@@ -44,8 +45,8 @@ func TestBackendGoesAway(t *testing.T) {
 	handlers["/v1/echo"] = &echoHandler{}
 	go connectToProxyWS(backendWs, handlers)
 
-	signedToken := test_utils.CreateToken("1", privateKey)
-	url := "ws://localhost:2222/v1/echo?token=" + signedToken
+	signedToken = test_utils.CreateToken("1", privateKey)
+	url = "ws://localhost:2222/v1/echo?token=" + signedToken
 	ws := getClientConnection(url, t)
 
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
