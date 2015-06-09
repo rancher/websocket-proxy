@@ -5,11 +5,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	_ "net/url"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -64,11 +62,8 @@ func (s *ProxyStarter) StartProxy() error {
 	}
 
 	server := &http.Server{
-		Handler:        pcRouter,
-		Addr:           s.Config.ListenAddr,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		Handler: pcRouter,
+		Addr:    s.Config.ListenAddr,
 	}
 	err := server.ListenAndServe()
 	return err
