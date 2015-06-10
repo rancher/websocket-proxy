@@ -105,7 +105,7 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 func (m *multiplexer) shutdown(stop chan<- bool) {
 	m.proxyManager.removeBackend(m.backendKey)
 	stop <- true
-	for k, _ := range m.frontendChans {
-		m.closeConnection(k, false)
+	for key := range m.frontendChans {
+		m.closeConnection(key, false)
 	}
 }
