@@ -110,7 +110,6 @@ func (p *pathCleaner) cleanPath(path string) string {
 
 func newCattleProxies(cattleAddr string) (*httputil.ReverseProxy, *cattleWSProxy) {
 	director := func(req *http.Request) {
-		// TODO Do I need to set X-Forwarded-For and X-Forwarded-Host?
 		req.URL.Scheme = "http"
 		req.URL.Host = cattleAddr
 	}
@@ -140,9 +139,8 @@ func (h *cattleWSProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *cattleWSProxy) serveWebsocket(rw http.ResponseWriter, req *http.Request) {
-	// TODO Document where I found this.
+	// Inspired by https://groups.google.com/forum/#!searchin/golang-nuts/httputil.ReverseProxy$20$2B$20websockets/golang-nuts/KBx9pDlvFOc/01vn1qUyVdwJ
 	target := h.cattleAddr
-	// target := "[localhost]:8081"
 	d, err := net.Dial("tcp", target)
 	if err != nil {
 		log.WithField("error", err).Error("Error dialing websocket backend.")
