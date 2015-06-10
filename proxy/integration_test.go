@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -28,7 +29,7 @@ func TestMain(m *testing.M) {
 
 	ps := &ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
-		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone"},
+		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone", "/v1/repeat"},
 		CattleWSProxyPaths: []string{"/v1/subscribe"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             c,
@@ -38,6 +39,7 @@ func TestMain(m *testing.M) {
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &echoHandler{}
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
+	handlers["/v1/repeat"] = &repeatingHandler{}
 	signedToken := test_utils.CreateBackendToken("1", privateKey)
 	url := "ws://localhost:1111/v1/connectbackend?token=" + signedToken
 	go backend.ConnectToProxy(url, handlers)
@@ -248,31 +250,47 @@ func getTestConfig() *Config {
 	return config
 }
 
-/*
-
-TODO Add a test that utilizes this handler and creates a ton of connections
-
-type LogsHandler struct {
+func TestManyChattyConnections(t *testing.T) {
+	// Spin up a hundred connections. The repeat handler will send a new message to each one
+	// every 10 milliseconds. Stop after 5 seconds. This is just to prove that the proxy can handle a little load.
+	for i := 1; i <= 100; i++ {
+		signedToken := test_utils.CreateToken("1", privateKey)
+		msg := strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10)
+		ws := getClientConnection("ws://localhost:1111/v1/repeat?token="+signedToken+"&msg="+msg, t)
+		go func(expectedPrefix string) {
+			for {
+				_, reply, err := ws.ReadMessage()
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(string(reply), expectedPrefix) {
+					t.Fatalf("Unexpected repsonse: [%v]", reply)
+				}
+			}
+		}(msg)
+		time.Sleep(1 * time.Millisecond) // Ensure different timestamp
+	}
+	time.Sleep(5 * time.Second)
 }
 
-func (l *LogsHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
+type repeatingHandler struct {
+}
+
+func (h *repeatingHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
+	u, err := url.Parse(initialMessage)
+	if err != nil {
+		log.Fatal(err)
+	}
+	msg := u.Query().Get("msg")
 	idx := 0
-	ticker := time.NewTicker(100 * time.Millisecond)
-	msg := ""
+	ticker := time.NewTicker(10 * time.Millisecond)
 	for {
 		select {
-		case m, ok := <-incomingMessages:
-			if !ok {
-				return
-			}
-			msg += m
 		case <-ticker.C:
-			if msg == "" {
-				msg = "logs"
-			}
 			data := fmt.Sprintf("%s %d", msg, idx)
 			wrap := common.Message{
 				Key:  key,
+				Type: common.Body,
 				Body: data,
 			}
 			response <- wrap
@@ -280,19 +298,3 @@ func (l *LogsHandler) Handle(key string, initialMessage string, incomingMessages
 		idx++
 	}
 }
-
-	count := 0
-	for count <= 10 {
-		if count >= 10 && count%10 == 0 {
-			msg := body + " " + strconv.Itoa(count)
-			t.Logf("Sending new message [%s]\n", msg)
-			ws.WriteMessage(1, []byte(msg))
-		}
-		_, msg, err := ws.ReadMessage()
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Logf("Test Receive: %s\n", msg)
-		count++
-	}
-*/
