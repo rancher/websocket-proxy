@@ -18,8 +18,6 @@ type Handler interface {
 }
 
 func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
-	// TODO Limit number of "worker" responders
-
 	log.WithFields(log.Fields{"url": proxyUrl}).Info("Connecting to proxy.")
 
 	dialer := &websocket.Dialer{}
