@@ -5,9 +5,12 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
@@ -58,6 +61,23 @@ func (s *ProxyStarter) StartProxy() error {
 		for _, p := range s.CattleProxyPaths {
 			router.Handle(p, cattleProxy)
 		}
+	}
+
+	if s.Config.ParentPid != 0 {
+		go func() {
+			for {
+				process, err := os.FindProcess(s.Config.ParentPid)
+				if err != nil {
+					log.Fatalf("Failed to find process: %s\n", err)
+				} else {
+					err := process.Signal(syscall.Signal(0))
+					if err != nil {
+						log.Fatal("Parent process went away. Shutting down.")
+					}
+				}
+				time.Sleep(time.Millisecond * 250)
+			}
+		}()
 	}
 
 	pcRouter := &pathCleaner{

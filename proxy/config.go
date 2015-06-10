@@ -14,6 +14,7 @@ type Config struct {
 	PublicKey  interface{}
 	ListenAddr string
 	CattleAddr string
+	ParentPid  int
 }
 
 func GetConfig() (*Config, error) {
@@ -24,6 +25,7 @@ func GetConfig() (*Config, error) {
 	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
 	flag.StringVar(&c.ListenAddr, "listen-address", "localhost:8080", "The tcp address to listen on.")
 	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
+	flag.IntVar(&c.ParentPid, "parent-pid", 0, "If provided, this process will exit when the specified parent process stops running.")
 
 	confOptions := &globalconf.Options{
 		EnvPrefix: "PROXY_",
