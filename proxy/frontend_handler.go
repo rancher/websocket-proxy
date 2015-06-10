@@ -19,13 +19,6 @@ type FrontendHandler struct {
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	startTime := time.Now()
-	defer func() {
-		finishTime := time.Now()
-		elapsedTime := finishTime.Sub(startTime)
-		logAccess(rw, req, elapsedTime)
-	}()
-
 	hostKey, authed := h.auth(req)
 	if !authed {
 		http.Error(rw, "Failed authentication", 401)

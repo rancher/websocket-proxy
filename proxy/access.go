@@ -10,11 +10,6 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-// TODO Currently not using this. Clean up
-const (
-	logFile = "access_log.txt"
-)
-
 type accessLog struct {
 	ip, method, uri, protocol, host string
 	elapsedTime                     time.Duration
