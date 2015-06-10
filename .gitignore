@@ -24,8 +24,7 @@ _testmain.go
 *.prof
 .DS_Store
 
-*.sw[pon]
+*.sw[lmpon]
 
-build
 dist
 websocket-proxy
