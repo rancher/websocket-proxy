@@ -16,7 +16,7 @@ func main() {
 
 	p := &proxy.ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
-		FrontendPaths:      []string{"/v1/{logs:logs}/", "/v1/{stats:stats}", "/v1/{stats:stats}/{statsid}"},
+		FrontendPaths:      []string{"/v1/{logs:logs}/", "/v1/{stats:stats}", "/v1/{stats:stats}/{statsid}", "/v1/exec/"},
 		CattleWSProxyPaths: []string{"/v1/{sub:subscribe}"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             conf,
