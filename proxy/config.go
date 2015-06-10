@@ -4,9 +4,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"flag"
+	"fmt"
 	"io/ioutil"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/rakyll/globalconf"
 )
 
@@ -19,7 +19,9 @@ type Config struct {
 func GetConfig() (*Config, error) {
 	c := &Config{}
 	var keyFile string
+	var keyContents string
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
+	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
 	flag.StringVar(&c.ListenAddr, "listen-address", "localhost:8080", "The tcp address to listen on.")
 	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
 
@@ -35,12 +37,23 @@ func GetConfig() (*Config, error) {
 
 	conf.ParseAll()
 
-	if parsedKey, err := ParsePublicKey(keyFile); err != nil {
-		log.WithField("error", err).Error("Couldn't parse public key.")
-		return nil, err
-	} else {
-		c.PublicKey = parsedKey
+	if keyFile != "" && keyContents != "" {
+		return nil, fmt.Errorf("Can't specify both jwt-public-key-file and jwt-public-key-contents")
 	}
+	var parsedKey interface{}
+	var parseErr error
+	if keyFile != "" {
+		parsedKey, parseErr = ParsePublicKey(keyFile)
+	} else if keyContents != "" {
+		parsedKey, parseErr = ParsePublicKeyFromMemory(keyContents)
+	} else {
+		parseErr = fmt.Errorf("Must specify one of jwt-public-key-file and jwt-public-key-contents")
+	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
+
+	c.PublicKey = parsedKey
 	return c, nil
 }
 
@@ -50,6 +63,14 @@ func ParsePublicKey(keyFile string) (interface{}, error) {
 		return nil, err
 	}
 
+	return publicKeyDecode(keyBytes)
+}
+
+func ParsePublicKeyFromMemory(keyFileContents string) (interface{}, error) {
+	return publicKeyDecode([]byte(keyFileContents))
+}
+
+func publicKeyDecode(keyBytes []byte) (interface{}, error) {
 	block, _ := pem.Decode(keyBytes)
 	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
