@@ -1,0 +1,15 @@
+#!/bin/bash
+
+cd $(dirname $0)/..
+
+. ./scripts/common_functions
+
+set_project_vars
+
+rm -rf dist
+mkdir -p dist/artifacts
+
+cd build
+echo "Packaging:"
+tar cvJf ../dist/artifacts/$PROJECT.tar.xz .
+echo Created dist/artifacts/$PROJECT.tar.xz
