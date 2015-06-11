@@ -114,7 +114,8 @@ func newCattleProxies(cattleAddr string) (*httputil.ReverseProxy, *cattleWSProxy
 		req.URL.Host = cattleAddr
 	}
 	cattleProxy := &httputil.ReverseProxy{
-		Director: director,
+		Director:      director,
+		FlushInterval: time.Millisecond * 100,
 	}
 
 	wsProxy := &cattleWSProxy{
