@@ -99,7 +99,7 @@ func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 			return hostKey, true
 		}
 	}
-	log.WithFields(log.Fields{"hostUuid": hostUuid}).Errorf("Invalid backend host requested.")
+	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
 	return "", false
 }
 
