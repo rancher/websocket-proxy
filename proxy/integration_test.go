@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 
 	ps := &ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
-		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone", "/v1/repeat"},
+		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
 		CattleWSProxyPaths: []string{"/v1/subscribe"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             c,
@@ -40,6 +40,7 @@ func TestMain(m *testing.M) {
 	handlers["/v1/echo"] = &echoHandler{}
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
 	handlers["/v1/repeat"] = &repeatingHandler{}
+	handlers["/v1/sendafterclose"] = &sendAfterCloseHandler{}
 	signedToken := test_utils.CreateBackendToken("1", privateKey)
 	url := "ws://localhost:1111/v1/connectbackend?token=" + signedToken
 	go backend.ConnectToProxy(url, handlers)
@@ -128,6 +129,24 @@ func TestFrontendClosesConnection(t *testing.T) {
 	}
 }
 
+func TestBackendSendAfterClose(t *testing.T) {
+	signedToken := test_utils.CreateToken("1", privateKey)
+	ws := getClientConnection("ws://localhost:1111/v1/sendafterclose?token="+signedToken, t)
+	go func() {
+		for {
+			_, _, err := ws.ReadMessage()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	ws2 := getClientConnection("ws://localhost:1111/v1/echo?token="+signedToken, t)
+	// If deadlock occurs, the read deadline will be hit and the sendAndAssertReply will fail the test
+	ws2.SetReadDeadline(time.Now().Add(2 * time.Second))
+	sendAndAssertReply(ws2, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+}
+
 func TestCattleProxy(t *testing.T) {
 	resp, err := http.Get("http://localhost:1111/v1/foo1")
 	assertProxyResponse(resp, err, t)
@@ -194,6 +213,23 @@ func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
 	t.Logf("Received: %s\n", reply)
 	if msg+"-response" != string(reply) {
 		t.Fatalf("Unexpected repsonse: [%v]", reply)
+	}
+}
+
+type sendAfterCloseHandler struct {
+}
+
+func (e *sendAfterCloseHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
+	backend.SignalHandlerClosed(key, response)
+	m := "foo"
+	if m != "" {
+		data := fmt.Sprintf("%s-response", m)
+		wrap := common.Message{
+			Key:  key,
+			Type: common.Body,
+			Body: data,
+		}
+		response <- wrap
 	}
 }
 
