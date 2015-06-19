@@ -34,6 +34,7 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, "Failed to upgrade connection.", 500)
 		return
 	}
+	defer h.closeConnection(ws)
 
 	msgKey, respChannel, err := h.backend.initializeClient(hostKey)
 	if err != nil {
@@ -41,28 +42,29 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		h.closeConnection(ws)
 		return
 	}
+	defer h.backend.closeConnection(hostKey, msgKey)
 
 	// Send response messages to client
 	go func() {
 		for {
 			message, ok := <-respChannel
 			if !ok {
-				h.closeConnection(ws)
 				return
 			}
 			switch message.Type {
 			case common.Body:
-				ws.WriteMessage(1, []byte(message.Body))
+				ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				if err := ws.WriteMessage(1, []byte(message.Body)); err != nil {
+					h.closeConnection(ws)
+				}
 			case common.Close:
 				h.closeConnection(ws)
-				return
 			}
 		}
 	}()
 
 	url := req.URL.String()
 	if err = h.backend.connect(hostKey, msgKey, url); err != nil {
-		h.closeConnection(ws)
 		return
 	}
 
@@ -70,13 +72,10 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	for {
 		msgType, msg, err := ws.ReadMessage()
 		if err != nil {
-			h.backend.closeConnection(hostKey, msgKey)
-			h.closeConnection(ws)
 			return
 		}
 		if msgType == websocket.BinaryMessage || msgType == websocket.TextMessage {
 			if err = h.backend.send(hostKey, msgKey, string(msg)); err != nil {
-				h.closeConnection(ws)
 				return
 			}
 		}
@@ -100,7 +99,7 @@ func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 			return hostKey, true
 		}
 	}
-	log.WithFields(log.Fields{"hostUuid": hostUuid}).Errorf("Invalid backend host requested.")
+	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
 	return "", false
 }
 
