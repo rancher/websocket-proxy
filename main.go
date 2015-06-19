@@ -7,7 +7,6 @@ import (
 )
 
 func main() {
-	log.Info("Starting proxy...")
 
 	conf, err := proxy.GetConfig()
 	if err != nil {
@@ -21,6 +20,9 @@ func main() {
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             conf,
 	}
+
+	log.Infof("Starting websocket proxy. Listening on [%s], Proxying to cattle API at [%s], Monitoring parent pid [%v].",
+		conf.ListenAddr, conf.CattleAddr, conf.ParentPid)
 
 	err = p.StartProxy()
 
