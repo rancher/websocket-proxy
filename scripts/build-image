@@ -1,0 +1,9 @@
+#!/bin/bash
+
+cd $(dirname $0)/..
+
+TAG=${TAG:=dev}
+IMAGE_NAME=${IMAGE:-"rancher/websocket-proxy"}:${TAG}
+
+echo "Building Docker image"
+docker build --rm -t ${IMAGE_NAME} -f Dockerfile.dist .

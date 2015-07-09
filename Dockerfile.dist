@@ -1,0 +1,4 @@
+FROM scratch
+ADD ./build/websocket-proxy /websocket-proxy
+
+CMD ["/websocket-proxy"]
