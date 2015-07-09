@@ -21,4 +21,4 @@ fi
 
 rm -rf build
 mkdir -p build
-go build -o build/${PROJECT} -ldflags "-X main.GITCOMMIT $GITCOMMIT"
+go build -o build/${PROJECT} -a -tags "netgo" -installsuffix netgo -ldflags "-linkmode external -extldflags -static -X main.GITCOMMIT $GITCOMMIT"
