@@ -76,8 +76,6 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 			m.frontendMu.RUnlock()
 
 			if !ok && message.Type != common.Close {
-				log.WithFields(log.Fields{"Message": message}).Warn(
-					"Could not find channel for message. Dropping message and sending close to backend.")
 				m.sendClose(message.Key)
 			}
 		}
