@@ -1,6 +1,6 @@
 # websocket-proxy [![Build Status](http://ci.rancher.io/api/badge/github.com/rancher/websocket-proxy/status.svg?branch=master)](http://ci.rancher.io/github.com/rancher/websocket-proxy)
 
-Serves as a proxy for the websocket connections made to a Rancehr host to obtain stats, view container logs, or perform docker execs.
+Serves as a proxy for the websocket connections made to a Rancher host to obtain stats, view container logs, or perform docker execs.
 
 ## Contact
 Please submit bugs and issues to [rancher/rancher](//github.com/rancher/rancher/issues) with a title starting with `[websocket-proxy] `.
