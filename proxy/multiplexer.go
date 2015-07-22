@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"sync"
+	"time"
 
 	"code.google.com/p/go-uuid/uuid"
 	log "github.com/Sirupsen/logrus"
@@ -60,12 +61,15 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 	// Read messages from backend
 	go func(stop chan<- bool) {
 		for {
-			_, msg, err := ws.ReadMessage()
+			msgType, msg, err := ws.ReadMessage()
 			if err != nil {
 				m.shutdown(stop)
 				return
 			}
 
+			if msgType != websocket.TextMessage {
+				continue
+			}
 			message := common.ParseMessage(string(msg))
 
 			m.frontendMu.RLock()
@@ -83,6 +87,8 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 
 	// Write messages to backend
 	go func(stop <-chan bool) {
+		ticker := time.NewTicker(time.Second * 5)
+		defer ticker.Stop()
 		for {
 			select {
 			case message, ok := <-m.messagesToBackend:
@@ -93,6 +99,10 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 				if err != nil {
 					log.WithFields(log.Fields{"error": err, "msg": message}).Error("Could not write message.")
 				}
+
+			case <-ticker.C:
+				ws.WriteControl(websocket.PingMessage, []byte(""), time.Now().Add(time.Second))
+
 			case <-stop:
 				return
 			}
