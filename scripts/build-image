@@ -1,6 +1,18 @@
 #!/bin/bash
 
+set -e
+
 cd $(dirname $0)/..
+mkdir -p dist/artifacts
+
+ARTIFACT_URL=$(curl -s https://api.github.com/repos/rancher/websocket-proxy/releases/latest | jq -r .assets[0].browser_download_url)
+TARGET="dist/artifacts/websocket-proxy.tar.xz"
+
+echo "Downloading ${ARTIFACT_URL}"
+curl -o ${TARGET} -L ${ARTIFACT_URL}
+
+echo "Uncompressing..."
+tar -xJvf ${TARGET} -C dist/artifacts/
 
 TAG=${TAG:=dev}
 IMAGE_NAME=${IMAGE:-"rancher/websocket-proxy"}:${TAG}
