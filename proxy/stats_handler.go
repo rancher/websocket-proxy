@@ -89,6 +89,7 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 		// Send response messages to client
 		go func(s *statsInfo) {
+			errStatus := false
 			for {
 				message, ok := <-s.respChannel
 				if !ok {
@@ -99,23 +100,22 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 					mutex.Lock()
 					ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 					if err := ws.WriteMessage(1, []byte(message.Body)); err != nil {
-						mutex.Unlock()
-						return
+						errStatus = true
 					}
 					mutex.Unlock()
 				case common.Close:
-					return
+					countMutex.Lock()
+					errStatus = true
+					doneCounter--
+					countMutex.Unlock()
+				}
+				if errStatus {
+					s.closeClient(h)
+					if doneCounter == 0 {
+						closeConnection(ws)
+					}
 				}
 			}
-			defer func() {
-				countMutex.Lock()
-				doneCounter--
-				s.closeClient(h)
-				if doneCounter == 0 {
-					closeConnection(ws)
-				}
-				countMutex.Unlock()
-			}()
 		}(statsInfoStruct)
 
 		if err = statsInfoStruct.connect(h); err != nil {
