@@ -34,12 +34,12 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		http.Error(rw, "Failed to upgrade connection.", 500)
 		return
 	}
-	defer h.closeConnection(ws)
+	defer closeConnection(ws)
 
 	msgKey, respChannel, err := h.backend.initializeClient(hostKey)
 	if err != nil {
 		log.Errorf("Error during initialization: [%v]", err)
-		h.closeConnection(ws)
+		closeConnection(ws)
 		return
 	}
 	defer h.backend.closeConnection(hostKey, msgKey)
@@ -55,10 +55,10 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			case common.Body:
 				ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				if err := ws.WriteMessage(1, []byte(message.Body)); err != nil {
-					h.closeConnection(ws)
+					closeConnection(ws)
 				}
 			case common.Close:
-				h.closeConnection(ws)
+				closeConnection(ws)
 			}
 		}
 	}()
@@ -103,7 +103,7 @@ func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
 	return "", false
 }
 
-func (h *FrontendHandler) closeConnection(ws *websocket.Conn) {
+func closeConnection(ws *websocket.Conn) {
 	ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
 	ws.Close()
 }

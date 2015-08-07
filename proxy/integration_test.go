@@ -30,6 +30,7 @@ func TestMain(m *testing.M) {
 	ps := &ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
 		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
+		StatsPaths:         []string{"/v1/hostStats/project"},
 		CattleWSProxyPaths: []string{"/v1/subscribe"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             c,
@@ -41,9 +42,20 @@ func TestMain(m *testing.M) {
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
 	handlers["/v1/repeat"] = &repeatingHandler{}
 	handlers["/v1/sendafterclose"] = &sendAfterCloseHandler{}
+	handlers["/v1/hostStats/project"] = &statsHandler{1}
 	signedToken := test_utils.CreateBackendToken("1", privateKey)
 	url := "ws://localhost:1111/v1/connectbackend?token=" + signedToken
 	go backend.ConnectToProxy(url, handlers)
+
+	signedToken = test_utils.CreateBackendToken("2", privateKey)
+	handlers2 := make(map[string]backend.Handler)
+	handlers2["/v1/echo"] = &echoHandler{}
+	handlers2["/v1/oneanddone"] = &oneAndDoneHandler{}
+	handlers2["/v1/repeat"] = &repeatingHandler{}
+	handlers2["/v1/sendafterclose"] = &sendAfterCloseHandler{}
+	handlers2["/v1/hostStats/project"] = &statsHandler{2}
+	url = "ws://localhost:1111/v1/connectbackend?token=" + signedToken
+	go backend.ConnectToProxy(url, handlers2)
 
 	router := mux.NewRouter()
 	router.HandleFunc("/v1/subscribe", getWsHandler())
@@ -125,7 +137,7 @@ func TestFrontendClosesConnection(t *testing.T) {
 	}
 
 	if _, _, err := ws.ReadMessage(); err == nil {
-		t.Fatal("Expecrted error indicating websocket was closed.")
+		t.Fatal("Expected error indicating websocket was closed.")
 	}
 }
 
@@ -145,6 +157,45 @@ func TestBackendSendAfterClose(t *testing.T) {
 	// If deadlock occurs, the read deadline will be hit and the sendAndAssertReply will fail the test
 	ws2.SetReadDeadline(time.Now().Add(2 * time.Second))
 	sendAndAssertReply(ws2, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+}
+
+func TestMultiHostStats(t *testing.T) {
+	payload := map[string]interface{}{
+		"project": []map[string]string{
+			{
+				"url":   "ws://localhost:1111/v1/hostStats/project",
+				"token": test_utils.CreateToken("1", privateKey),
+			},
+			{
+				"url":   "ws://localhost:1111/v1/hostStats/project",
+				"token": test_utils.CreateToken("2", privateKey),
+			},
+		},
+	}
+	signedToken := test_utils.CreateTokenWithPayload(payload, privateKey)
+	ws := getClientConnection("ws://localhost:1111/v1/hostStats/project?token="+signedToken, t)
+	one := false
+	two := false
+	for i := 0; i < 100; i++ {
+		err := ws.WriteMessage(1, []byte("x"))
+		if err != nil {
+			t.Fatal("Error talking to host")
+		}
+		_, msgBytes, err := ws.ReadMessage()
+		if err != nil {
+			t.Fatal("Error reading response from various containers")
+		}
+		if string(msgBytes) == "1" {
+			one = true
+		}
+		if string(msgBytes) == "2" {
+			two = true
+		}
+		if one && two {
+			return
+		}
+	}
+	t.Fatal("Did not get container stats from two hosts")
 }
 
 func TestCattleProxy(t *testing.T) {
@@ -231,6 +282,22 @@ func (e *sendAfterCloseHandler) Handle(key string, initialMessage string, incomi
 		}
 		response <- wrap
 	}
+}
+
+type statsHandler struct {
+	i int
+}
+
+func (s *statsHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
+	defer backend.SignalHandlerClosed(key, response)
+	data := fmt.Sprintf("%d", s.i)
+	wrap := common.Message{
+		Key:  key,
+		Type: common.Body,
+		Body: data,
+	}
+	response <- wrap
+	return
 }
 
 type oneAndDoneHandler struct {

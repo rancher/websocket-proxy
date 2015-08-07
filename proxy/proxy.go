@@ -21,6 +21,7 @@ var slashRegex = regexp.MustCompile("[/]{2,}")
 type ProxyStarter struct {
 	BackendPaths       []string
 	FrontendPaths      []string
+	StatsPaths         []string
 	CattleProxyPaths   []string
 	CattleWSProxyPaths []string
 	Config             *Config
@@ -38,6 +39,11 @@ func (s *ProxyStarter) StartProxy() error {
 		parsedPublicKey: s.Config.PublicKey,
 	}
 
+	statsHandler := &StatsHandler{
+		backend:         bpm,
+		parsedPublicKey: s.Config.PublicKey,
+	}
+
 	backendHandler := &BackendHandler{
 		proxyManager:    bpm,
 		parsedPublicKey: s.Config.PublicKey,
@@ -51,6 +57,10 @@ func (s *ProxyStarter) StartProxy() error {
 	}
 	for _, p := range s.FrontendPaths {
 		router.Handle(p, frontendHandler).Methods("GET")
+	}
+
+	for _, p := range s.StatsPaths {
+		router.Handle(p, statsHandler).Methods("GET")
 	}
 
 	if s.Config.CattleAddr != "" {
