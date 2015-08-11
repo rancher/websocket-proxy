@@ -109,11 +109,8 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 					doneCounter--
 					countMutex.Unlock()
 				}
-				if errStatus {
-					s.closeClient(h)
-					if doneCounter == 0 {
-						closeConnection(ws)
-					}
+				if errStatus && doneCounter == 0 {
+					closeConnection(ws)
 				}
 			}
 		}(statsInfoStruct)
