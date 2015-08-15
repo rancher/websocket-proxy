@@ -14,6 +14,8 @@ import (
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
+
+	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
 )
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
@@ -49,7 +51,7 @@ func (s *ProxyStarter) StartProxy() error {
 		parsedPublicKey: s.Config.PublicKey,
 	}
 
-	cattleProxy, cattleWsProxy := newCattleProxies(s.Config.CattleAddr)
+	cattleProxy, cattleWsProxy := newCattleProxies(s.Config)
 
 	router := mux.NewRouter()
 	for _, p := range s.BackendPaths {
@@ -95,10 +97,19 @@ func (s *ProxyStarter) StartProxy() error {
 	}
 
 	server := &http.Server{
-		Handler: pcRouter,
-		Addr:    s.Config.ListenAddr,
+		Handler:   pcRouter,
+		Addr:      s.Config.ListenAddr,
+		ConnState: proxyprotocol.StateCleanup,
 	}
-	err := server.ListenAndServe()
+
+	listener, err := net.Listen("tcp", s.Config.ListenAddr)
+	if err != nil {
+		log.Fatalf("Couldn't create listener: %s\n", err)
+	}
+
+	proxyListener := &proxyprotocol.Listener{listener}
+
+	err = server.Serve(proxyListener)
 	return err
 }
 
@@ -118,7 +129,8 @@ func (p *pathCleaner) cleanPath(path string) string {
 	return slashRegex.ReplaceAllString(path, "/")
 }
 
-func newCattleProxies(cattleAddr string) (*httputil.ReverseProxy, *cattleWSProxy) {
+func newCattleProxies(config *Config) (*proxyProtocolConverter, *cattleWSProxy) {
+	cattleAddr := config.CattleAddr
 	director := func(req *http.Request) {
 		req.URL.Scheme = "http"
 		req.URL.Host = cattleAddr
@@ -128,16 +140,31 @@ func newCattleProxies(cattleAddr string) (*httputil.ReverseProxy, *cattleWSProxy
 		FlushInterval: time.Millisecond * 100,
 	}
 
-	wsProxy := &cattleWSProxy{
+	reverseProxy := &proxyProtocolConverter{
 		reverseProxy: cattleProxy,
+		httpsPorts:   config.ProxyProtoHttpsPorts,
+	}
+
+	wsProxy := &cattleWSProxy{
+		reverseProxy: reverseProxy,
 		cattleAddr:   cattleAddr,
 	}
 
-	return cattleProxy, wsProxy
+	return reverseProxy, wsProxy
+}
+
+type proxyProtocolConverter struct {
+	reverseProxy *httputil.ReverseProxy
+	httpsPorts   map[int]bool
+}
+
+func (h *proxyProtocolConverter) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	proxyprotocol.AddHeaders(req, h.httpsPorts)
+	h.reverseProxy.ServeHTTP(rw, req)
 }
 
 type cattleWSProxy struct {
-	reverseProxy *httputil.ReverseProxy
+	reverseProxy *proxyProtocolConverter
 	cattleAddr   string
 }
 
