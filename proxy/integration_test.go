@@ -1,9 +1,11 @@
 package proxy
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,6 +61,7 @@ func TestMain(m *testing.M) {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/v1/subscribe", getWsHandler())
+	router.HandleFunc("/v1/proxyproto", proxyProtoHandler)
 	router.HandleFunc("/{foo:.*}", func(rw http.ResponseWriter, req *http.Request) {
 		rw.Write([]byte("SUCCESS"))
 	})
@@ -67,6 +70,13 @@ func TestMain(m *testing.M) {
 	time.Sleep(50 * time.Millisecond) // Give front and back a chance to initialize
 
 	os.Exit(m.Run())
+}
+
+func proxyProtoHandler(rw http.ResponseWriter, req *http.Request) {
+	xFor := req.Header.Get("X-Forwarded-For")
+	xPort := req.Header.Get("X-Forwarded-Port")
+	xProto := req.Header.Get("X-Forwarded-Proto")
+	fmt.Fprintf(rw, "%s=%s,%s=%s,%s=%s\n", "xFor", xFor, "xPort", xPort, "xProto", xProto)
 }
 
 func getWsHandler() func(rw http.ResponseWriter, req *http.Request) {
@@ -345,10 +355,12 @@ func getTestConfig() *Config {
 	if err != nil {
 		log.Fatal("Failed to parse key. ", err)
 	}
+	ports := map[int]bool{443: true}
 	config := &Config{
-		PublicKey:  pubKey,
-		ListenAddr: "127.0.0.1:1111",
-		CattleAddr: "127.0.0.1:3333",
+		PublicKey:            pubKey,
+		ListenAddr:           "127.0.0.1:1111",
+		CattleAddr:           "127.0.0.1:3333",
+		ProxyProtoHttpsPorts: ports,
 	}
 	return config
 }
@@ -374,6 +386,59 @@ func TestManyChattyConnections(t *testing.T) {
 		time.Sleep(1 * time.Millisecond) // Ensure different timestamp
 	}
 	time.Sleep(5 * time.Second)
+}
+
+func TestProxyProto(t *testing.T) {
+	testProxyProto("2222", "http", t)
+	testProxyProto("443", "https", t)
+}
+
+func testProxyProto(port string, proto string, t *testing.T) {
+	conn, err := net.Dial("tcp", "localhost:1111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	clientIP, clientPort, err := net.SplitHostPort(conn.LocalAddr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(conn, "PROXY TCP4 %s 1.1.1.1 %s %s\r\nGET /v1/proxyproto HTTP/1.1\r\n\r\n", clientIP, clientPort, port)
+	expectedResult := fmt.Sprintf("xFor=127.0.0.1, 127.0.0.1,xPort=%s,xProto=%s", port, proto)
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "xFor") {
+			if line != expectedResult {
+				t.Fatalf("Unexpected result: [%s]", line)
+			}
+			break
+		}
+	}
+}
+
+func TestProxyProtocolHang(t *testing.T) {
+	// Tests a bug where proxy would hang if a single empty connection connection was opened
+	conn, err := net.Dial("tcp", "localhost:1111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Fprint(conn, "")
+
+	gotResponse := make(chan bool)
+	go func(resp chan bool) {
+		http.Get("http://localhost:1111/v1/subscribe")
+		resp <- true
+	}(gotResponse)
+
+	timer := time.NewTimer(time.Second)
+	select {
+	case <-gotResponse:
+	case <-timer.C:
+		t.FailNow()
+	}
+
 }
 
 type repeatingHandler struct {
