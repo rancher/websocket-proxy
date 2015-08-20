@@ -4,23 +4,39 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+)
+
+const (
+	xForwardedProto string = "X-Forwarded-Proto"
+	xForwardedPort  string = "X-Forwarded-Port"
+	xForwardedFor   string = "X-Forwarded-For"
+	sep             string = ", "
 )
 
 func AddHeaders(req *http.Request, httpsPorts map[int]bool) {
 	proxyProtoInfo := getInfo(req.RemoteAddr)
 	if proxyProtoInfo != nil {
-		if _, ok := req.Header["X-Forwarded-Proto"]; !ok {
+		if h := req.Header.Get(xForwardedProto); h == "" {
 			var proto string
 			if _, ok := httpsPorts[proxyProtoInfo.ProxyAddr.Port]; ok {
 				proto = "https"
 			} else {
 				proto = "http"
 			}
-			req.Header.Set("X-Forwarded-Proto", proto)
+			req.Header.Set(xForwardedProto, proto)
 		}
-		if _, ok := req.Header["X-Forwarded-Port"]; !ok {
-			req.Header.Set("X-Forwarded-Port", strconv.Itoa(proxyProtoInfo.ProxyAddr.Port))
+
+		if h := req.Header.Get(xForwardedPort); h == "" {
+			req.Header.Set(xForwardedPort, strconv.Itoa(proxyProtoInfo.ProxyAddr.Port))
 		}
+
+		ip := proxyProtoInfo.ClientAddr.IP.String()
+		if forwardedFors, ok := req.Header[http.CanonicalHeaderKey(xForwardedFor)]; ok {
+			ip = strings.Join(forwardedFors, sep) + sep + ip
+		}
+		req.Header.Set(xForwardedFor, ip)
+
 	}
 }
 

@@ -28,14 +28,11 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	log "github.com/Sirupsen/logrus"
 )
 
 var (
@@ -53,16 +50,16 @@ type Listener struct {
 	Listener net.Listener
 }
 
-// Conn is used to wrap and underlying connection which
-// may be speaking the Proxy Protocol. If it is, the RemoteAddr() will
-// return the address of the client instead of the proxy address.
+// Conn is used to wrap an underlying connection which
+// may be speaking the Proxy Protocol. If it is, when Read() is called,
+// the Proxy protocol header will be stripped and added to the context.
 type Conn struct {
 	bufReader *bufio.Reader
 	conn      net.Conn
-	srcAddr   *net.TCPAddr
 	once      sync.Once
 }
 
+// Data structure representing proxy protocol information.
 type ProxyProtoInfo struct {
 	Protocol   string
 	ClientAddr *net.TCPAddr
@@ -99,7 +96,7 @@ func NewConn(conn net.Conn) *Conn {
 	return pConn
 }
 
-// Read is check for the proxy protocol header when doing
+// Read checks for the proxy protocol header when doing
 // the initial scan. If there is an error parsing the header,
 // it is returned and the socket is closed.
 func (p *Conn) Read(b []byte) (int, error) {
@@ -123,22 +120,7 @@ func (p *Conn) LocalAddr() net.Addr {
 	return p.conn.LocalAddr()
 }
 
-// RemoteAddr returns the address of the client if the proxy
-// protocol is being used, otherwise just returns the address of
-// the socket peer. If there is an error parsing the header, the
-// address of the client is not returned, and the socket is closed.
-// Once implication of this is that the call could block if the
-// client is slow. Using a Deadline is recommended if this is called
-// before Read()
 func (p *Conn) RemoteAddr() net.Addr {
-	p.once.Do(func() {
-		if err := p.checkPrefix(); err != nil && err != io.EOF {
-			log.Warnf("[ERR] Failed to read proxy prefix: %v", err)
-		}
-	})
-	if p.srcAddr != nil {
-		return p.srcAddr
-	}
 	return p.conn.RemoteAddr()
 }
 
@@ -174,7 +156,6 @@ func (p *Conn) checkPrefix() error {
 		p.conn.Close()
 		return err
 	}
-
 	// Strip the carriage return and new line
 	header = header[:len(header)-2]
 
@@ -186,46 +167,43 @@ func (p *Conn) checkPrefix() error {
 	}
 
 	// Verify the type is known
-	switch parts[1] {
-	case "TCP4":
-	case "TCP6":
-	default:
+	if parts[1] != "TCP4" && parts[1] != "TCP6" {
 		p.conn.Close()
 		return fmt.Errorf("Unhandled address type: %s", parts[1])
 	}
 
 	// Parse out the source address
-	ip := net.ParseIP(parts[2])
-	if ip == nil {
-		p.conn.Close()
-		return fmt.Errorf("Invalid source ip: %s", parts[2])
-	}
-	port, err := strconv.Atoi(parts[4])
+	srcAddr, err := parseAddr(parts[2], parts[4])
 	if err != nil {
 		p.conn.Close()
-		return fmt.Errorf("Invalid source port: %s", parts[4])
+		return err
 	}
-	p.srcAddr = &net.TCPAddr{IP: ip, Port: port}
 
 	// Parse out the destination address
-	ip = net.ParseIP(parts[3])
-	if ip == nil {
-		p.conn.Close()
-		return fmt.Errorf("Invalid destination ip: %s", parts[3])
-	}
-	port, err = strconv.Atoi(parts[5])
+	destAddr, err := parseAddr(parts[3], parts[5])
 	if err != nil {
 		p.conn.Close()
-		return fmt.Errorf("Invalid destination port: %s", parts[5])
+		return err
 	}
 
-	destAddr := &net.TCPAddr{IP: ip, Port: port}
 	proxyInfo := &ProxyProtoInfo{
 		Protocol:   parts[1],
-		ClientAddr: p.srcAddr,
+		ClientAddr: srcAddr,
 		ProxyAddr:  destAddr,
 	}
 	putInfo(proxyInfo.ClientAddr.String(), proxyInfo)
 
 	return nil
+}
+
+func parseAddr(ipStr, portStr string) (*net.TCPAddr, error) {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return nil, fmt.Errorf("Invalid ip: %s", ipStr)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return nil, fmt.Errorf("Invalid port: %s", portStr)
+	}
+	return &net.TCPAddr{IP: ip, Port: port}, nil
 }
