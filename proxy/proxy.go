@@ -182,18 +182,18 @@ func (h *cattleWSProxy) serveWebsocket(rw http.ResponseWriter, req *http.Request
 	d, err := net.Dial("tcp", target)
 	if err != nil {
 		log.WithField("error", err).Error("Error dialing websocket backend.")
-		http.Error(rw, "Unable to establish websocket connection.", 500)
+		http.Error(rw, "Unable to establish websocket connection: can't dial.", 500)
 		return
 	}
 	hj, ok := rw.(http.Hijacker)
 	if !ok {
-		http.Error(rw, "Unable to establish websocket connection.", 500)
+		http.Error(rw, "Unable to establish websocket connection: no hijacker.", 500)
 		return
 	}
 	nc, _, err := hj.Hijack()
 	if err != nil {
 		log.WithField("error", err).Error("Hijack error.")
-		http.Error(rw, "Unable to establish websocket connection.", 500)
+		http.Error(rw, "Unable to establish websocket connection: can't hijack.", 500)
 		return
 	}
 	defer nc.Close()
