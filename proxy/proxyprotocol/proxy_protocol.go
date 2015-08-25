@@ -191,7 +191,7 @@ func (p *Conn) checkPrefix() error {
 		ClientAddr: srcAddr,
 		ProxyAddr:  destAddr,
 	}
-	putInfo(proxyInfo.ClientAddr.String(), proxyInfo)
+	putInfo(p.conn.RemoteAddr().String(), proxyInfo)
 
 	return nil
 }
