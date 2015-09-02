@@ -50,3 +50,18 @@ func ParseTestPrivateKey() interface{} {
 
 	return privateKey
 }
+
+func ParseTestPublicKey() interface{} {
+	keyBytes, err := ioutil.ReadFile("../test_utils/public.pem")
+	if err != nil {
+		log.Fatal("Failed to parse public key.", err)
+	}
+
+	publicKey, err := jwt.ParseRSAPublicKeyFromPEM(keyBytes)
+	if err != nil {
+		log.Fatal("Failed to parse public key.", err)
+	}
+
+	return publicKey
+
+}
