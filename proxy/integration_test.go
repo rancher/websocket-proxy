@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -31,7 +32,7 @@ func TestMain(m *testing.M) {
 
 	ps := &ProxyStarter{
 		BackendPaths:       []string{"/v1/connectbackend"},
-		FrontendPaths:      []string{"/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
+		FrontendPaths:      []string{"/v1/binaryecho", "/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
 		StatsPaths:         []string{"/v1/hostStats/project"},
 		CattleWSProxyPaths: []string{"/v1/subscribe"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
@@ -41,6 +42,7 @@ func TestMain(m *testing.M) {
 
 	handlers := make(map[string]backend.Handler)
 	handlers["/v1/echo"] = &echoHandler{}
+	handlers["/v1/binaryecho"] = &binaryEchoHandler{}
 	handlers["/v1/oneanddone"] = &oneAndDoneHandler{}
 	handlers["/v1/repeat"] = &repeatingHandler{}
 	handlers["/v1/sendafterclose"] = &sendAfterCloseHandler{}
@@ -52,6 +54,7 @@ func TestMain(m *testing.M) {
 	signedToken = test_utils.CreateBackendToken("2", privateKey)
 	handlers2 := make(map[string]backend.Handler)
 	handlers2["/v1/echo"] = &echoHandler{}
+	handlers2["/v1/binaryecho"] = &binaryEchoHandler{}
 	handlers2["/v1/oneanddone"] = &oneAndDoneHandler{}
 	handlers2["/v1/repeat"] = &repeatingHandler{}
 	handlers2["/v1/sendafterclose"] = &sendAfterCloseHandler{}
@@ -106,6 +109,14 @@ func TestEndToEnd(t *testing.T) {
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+}
+
+func TestBinary(t *testing.T) {
+	signedToken := test_utils.CreateToken("1", privateKey)
+	ws := getBinaryClientConnection("ws://localhost:1111/v1/binaryecho?token="+signedToken, t)
+	sendBinaryAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
+	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
+	sendBinaryAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 }
 
 func TestAuthHeaderBearerToken(t *testing.T) {
@@ -249,9 +260,18 @@ func assertProxyResponse(resp *http.Response, err error, t *testing.T) {
 	}
 }
 
-func getClientConnection(url string, t *testing.T) *websocket.Conn {
-	dialer := &websocket.Dialer{}
+func getBinaryClientConnection(url string, t *testing.T) *websocket.Conn {
 	headers := http.Header{}
+	headers.Add("Sec-Websocket-Protocol", "binary")
+	return getClientConnectionWithHeaders(url, t, headers)
+}
+
+func getClientConnection(url string, t *testing.T) *websocket.Conn {
+	return getClientConnectionWithHeaders(url, t, http.Header{})
+}
+
+func getClientConnectionWithHeaders(url string, t *testing.T, headers http.Header) *websocket.Conn {
+	dialer := &websocket.Dialer{}
 	ws, _, err := dialer.Dial(url, headers)
 	if err != nil {
 		t.Fatal(err)
@@ -260,8 +280,16 @@ func getClientConnection(url string, t *testing.T) *websocket.Conn {
 }
 
 func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
+	sendAndAssertReplyWithType(ws, msg, 1, t)
+}
+
+func sendBinaryAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
+	sendAndAssertReplyWithType(ws, msg, 2, t)
+}
+
+func sendAndAssertReplyWithType(ws *websocket.Conn, msg string, msgType int, t *testing.T) {
 	message := []byte(msg)
-	err := ws.WriteMessage(1, message)
+	err := ws.WriteMessage(msgType, message)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +301,7 @@ func sendAndAssertReply(ws *websocket.Conn, msg string, t *testing.T) {
 	}
 	t.Logf("Received: %s\n", reply)
 	if msg+"-response" != string(reply) {
-		t.Fatalf("Unexpected repsonse: [%v]", reply)
+		t.Fatalf("Unexpected response: [%s]", reply)
 	}
 }
 
@@ -324,6 +352,30 @@ func (e *oneAndDoneHandler) Handle(key string, initialMessage string, incomingMe
 			Body: data,
 		}
 		response <- wrap
+	}
+}
+
+type binaryEchoHandler struct {
+}
+
+func (e *binaryEchoHandler) Handle(key string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message) {
+	defer backend.SignalHandlerClosed(key, response)
+	for {
+		m, ok := <-incomingMessages
+		if !ok {
+			return
+		}
+		if m != "" {
+			data, _ := base64.StdEncoding.DecodeString(m)
+			resp := fmt.Sprintf("%s-response", data)
+			respEncoded := base64.StdEncoding.EncodeToString([]byte(resp)[:])
+			wrap := common.Message{
+				Key:  key,
+				Type: common.Body,
+				Body: respEncoded,
+			}
+			response <- wrap
+		}
 	}
 }
 
@@ -379,7 +431,7 @@ func TestManyChattyConnections(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !strings.HasPrefix(string(reply), expectedPrefix) {
-					t.Fatalf("Unexpected repsonse: [%v]", reply)
+					t.Fatalf("Unexpected response: [%s]", reply)
 				}
 			}
 		}(msg)
