@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 		BackendPaths:       []string{"/v1/connectbackend"},
 		FrontendPaths:      []string{"/v1/binaryecho", "/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
 		StatsPaths:         []string{"/v1/hostStats/project"},
-		CattleWSProxyPaths: []string{"/v1/subscribe"},
+		CattleWSProxyPaths: []string{"/v1/subscribe", "/v1/wsproxyproto"},
 		CattleProxyPaths:   []string{"/{cattle-proxy:.*}"},
 		Config:             c,
 	}
@@ -65,6 +65,7 @@ func TestMain(m *testing.M) {
 	router := mux.NewRouter()
 	router.HandleFunc("/v1/subscribe", getWsHandler())
 	router.HandleFunc("/v1/proxyproto", proxyProtoHandler)
+	router.HandleFunc("/v1/wsproxyproto", wsProxyProtoHandler)
 	router.HandleFunc("/{foo:.*}", func(rw http.ResponseWriter, req *http.Request) {
 		rw.Write([]byte("SUCCESS"))
 	})
@@ -76,6 +77,13 @@ func TestMain(m *testing.M) {
 }
 
 func proxyProtoHandler(rw http.ResponseWriter, req *http.Request) {
+	xFor := req.Header.Get("X-Forwarded-For")
+	xPort := req.Header.Get("X-Forwarded-Port")
+	xProto := req.Header.Get("X-Forwarded-Proto")
+	fmt.Fprintf(rw, "%s=%s,%s=%s,%s=%s\n", "xFor", xFor, "xPort", xPort, "xProto", xProto)
+}
+
+func wsProxyProtoHandler(rw http.ResponseWriter, req *http.Request) {
 	xFor := req.Header.Get("X-Forwarded-For")
 	xPort := req.Header.Get("X-Forwarded-Port")
 	xProto := req.Header.Get("X-Forwarded-Proto")
@@ -440,12 +448,20 @@ func TestManyChattyConnections(t *testing.T) {
 	time.Sleep(5 * time.Second)
 }
 
+const wsProxyProtoTestRequest string = `GET /v1/wsproxyproto HTTP/1.1
+Connection: Upgrade
+Upgrade: websocket
+
+`
+const httpProxyProtoTestRequest string = "GET /v1/proxyproto HTTP/1.1\r\n\r\n"
+
 func TestProxyProto(t *testing.T) {
-	testProxyProto("2222", "http", t)
-	testProxyProto("443", "https", t)
+	testProxyProto("127.0.0.1, 127.0.0.1", "2222", "http", httpProxyProtoTestRequest, t)
+	testProxyProto("127.0.0.1, 127.0.0.1", "443", "https", httpProxyProtoTestRequest, t)
+	testProxyProto("127.0.0.1", "443", "https", wsProxyProtoTestRequest, t)
 }
 
-func testProxyProto(port string, proto string, t *testing.T) {
+func testProxyProto(forwardedFor string, forwardedPort string, forwardedProto string, body string, t *testing.T) {
 	conn, err := net.Dial("tcp", "localhost:1111")
 	if err != nil {
 		t.Fatal(err)
@@ -455,8 +471,8 @@ func testProxyProto(port string, proto string, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(conn, "PROXY TCP4 %s 1.1.1.1 %s %s\r\nGET /v1/proxyproto HTTP/1.1\r\n\r\n", clientIP, clientPort, port)
-	expectedResult := fmt.Sprintf("xFor=127.0.0.1, 127.0.0.1,xPort=%s,xProto=%s", port, proto)
+	fmt.Fprintf(conn, "PROXY TCP4 %s 1.1.1.1 %s %s\r\n%s", clientIP, clientPort, forwardedPort, body)
+	expectedResult := fmt.Sprintf("xFor=%s,xPort=%s,xProto=%s", forwardedFor, forwardedPort, forwardedProto)
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := scanner.Text()

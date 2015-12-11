@@ -170,6 +170,7 @@ type cattleWSProxy struct {
 
 func (h *cattleWSProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+		proxyprotocol.AddHeaders(req, h.reverseProxy.httpsPorts)
 		h.serveWebsocket(rw, req)
 	} else {
 		h.reverseProxy.ServeHTTP(rw, req)
