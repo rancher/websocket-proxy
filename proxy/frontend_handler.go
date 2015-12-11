@@ -55,6 +55,7 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Send response messages to client
 	go func() {
+		defer closeConnection(ws)
 		for {
 			message, ok := <-respChannel
 			if !ok {
