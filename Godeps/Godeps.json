@@ -1,15 +1,7 @@
 {
 	"ImportPath": "github.com/rancherio/websocket-proxy",
-	"GoVersion": "go1.4.1",
-	"Packages": [
-		"./..."
-	],
+	"GoVersion": "go1.5.2",
 	"Deps": [
-		{
-			"ImportPath": "code.google.com/p/go-uuid/uuid",
-			"Comment": "null-15",
-			"Rev": "35bc42037350f0078e3c974c6ea690f1926603ab"
-		},
 		{
 			"ImportPath": "github.com/Sirupsen/logrus",
 			"Comment": "v0.8.2-4-gc370730",
@@ -31,6 +23,11 @@
 		{
 			"ImportPath": "github.com/gorilla/websocket",
 			"Rev": "1551221275a7bd42978745a376b2531f791d88f3"
+		},
+		{
+			"ImportPath": "github.com/pborman/uuid",
+			"Comment": "v1.0-11-gc55201b",
+			"Rev": "c55201b036063326c5b1b89ccfe45a184973d073"
 		},
 		{
 			"ImportPath": "github.com/rakyll/globalconf",
