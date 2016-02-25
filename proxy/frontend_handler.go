@@ -23,7 +23,7 @@ type FrontendHandler struct {
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	hostKey, authed := h.auth(req)
+	_, hostKey, authed := h.auth(req)
 	if !authed {
 		http.Error(rw, "Failed authentication", 401)
 		return
@@ -113,25 +113,24 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (h *FrontendHandler) auth(req *http.Request) (string, bool) {
+func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
 	token, err := parseToken(req, h.parsedPublicKey)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
-		return "", false
+		return nil, "", false
 	}
 
 	if !token.Valid {
-		return "", false
+		return nil, "", false
 	}
 
 	hostUuid, found := token.Claims["hostUuid"]
 	if found {
 		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
-			return hostKey, true
+			return token, hostKey, true
 		}
 	}
 	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
-	return "", false
+	return nil, "", false
 }
 
 func closeConnection(ws *websocket.Conn) {
