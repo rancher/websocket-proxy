@@ -15,6 +15,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
+	"github.com/rancherio/websocket-proxy/k8s"
 	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
 )
 
@@ -64,6 +65,8 @@ func (s *ProxyStarter) StartProxy() error {
 	cattleProxy, cattleWsProxy := newCattleProxies(s.Config)
 
 	router := mux.NewRouter()
+
+	router.HandleFunc("/version", k8s.Version)
 
 	for _, p := range s.BackendPaths {
 		router.Handle(p, backendHandler).Methods("GET")
