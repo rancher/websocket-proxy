@@ -36,3 +36,13 @@ type Message struct {
 	Type MessageType
 	Body string
 }
+
+type HttpMessage struct {
+	Host    string              `json:"host,omitempty"`
+	Method  string              `json:"method,omitempty"`
+	URL     string              `json:"url,omitempty"`
+	Headers map[string][]string `json:"headers,omitempty"`
+	Code    int                 `json:"code,omitempty"`
+	Body    []byte              `json:"body,omitempty"`
+	EOF     bool                `json:"eof,omitempty"`
+}

@@ -40,6 +40,14 @@ func AddHeaders(req *http.Request, httpsPorts map[int]bool) {
 	}
 }
 
+func AddForwardedFor(req *http.Request) {
+	ip := strings.Split(req.RemoteAddr, ":")[0]
+	if forwardedFors, ok := req.Header[http.CanonicalHeaderKey(xForwardedFor)]; ok {
+		ip = strings.Join(forwardedFors, sep) + sep + ip
+	}
+	req.Header.Set(xForwardedFor, ip)
+}
+
 func StateCleanup(conn net.Conn, connState http.ConnState) {
 	if connState == http.StateClosed {
 		deleteInfo(conn.RemoteAddr().String())
