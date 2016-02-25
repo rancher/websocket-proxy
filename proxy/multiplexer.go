@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"code.google.com/p/go-uuid/uuid"
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
+	"github.com/pborman/uuid"
 
 	"github.com/rancherio/websocket-proxy/common"
 )
