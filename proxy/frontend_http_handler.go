@@ -21,7 +21,11 @@ type FrontendHTTPHandler struct {
 }
 
 func (h *FrontendHTTPHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	token, hostKey, authed := h.auth(req)
+	token, hostKey, authed, err := h.authAndLookup(req)
+	if err != nil {
+		http.Error(rw, "Service Unavailable", 503)
+		return
+	}
 	if !authed {
 		http.Error(rw, "Failed authentication", 401)
 		return
@@ -129,36 +133,35 @@ func writeResponse(rw http.ResponseWriter, message string) (bool, error) {
 	return response.EOF, nil
 }
 
-func (h *FrontendHTTPHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
+func (h *FrontendHTTPHandler) authAndLookup(req *http.Request) (*jwt.Token, string, bool, error) {
 	token, hostKey, ok := h.FrontendHandler.auth(req)
 	if ok {
-		return token, hostKey, ok
+		return token, hostKey, ok, nil
 	}
 
 	tokenString, err := h.TokenLookup.Lookup(req)
 	if err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("Error looking up token.")
-		return nil, "", false
+		return nil, "", false, err
 	}
 
 	token, err = jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return h.parsedPublicKey, nil
 	})
 	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
-		return nil, "", false
+		return nil, "", false, err
 	}
 
 	if !token.Valid {
-		return nil, "", false
+		return nil, "", false, nil
 	}
 
 	hostUuid, found := token.Claims["hostUuid"]
 	if found {
 		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
-			return token, hostKey, true
+			return token, hostKey, true, nil
 		}
 	}
 	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
-	return nil, "", false
+	return nil, "", false, nil
 }
