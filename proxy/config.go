@@ -1,14 +1,19 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/rakyll/globalconf"
 )
 
@@ -53,6 +58,12 @@ func GetConfig() (*Config, error) {
 		parsedKey, parseErr = ParsePublicKey(keyFile)
 	} else if keyContents != "" {
 		parsedKey, parseErr = ParsePublicKeyFromMemory(keyContents)
+	} else if c.CattleAddr != "" {
+		bytes, err := downloadKey(c.CattleAddr)
+		if err != nil {
+			parseErr = err
+		}
+		parsedKey, parseErr = publicKeyDecode(bytes)
 	} else {
 		parseErr = fmt.Errorf("Must specify one of jwt-public-key-file and jwt-public-key-contents")
 	}
@@ -89,10 +100,27 @@ func ParsePublicKeyFromMemory(keyFileContents string) (interface{}, error) {
 
 func publicKeyDecode(keyBytes []byte) (interface{}, error) {
 	block, _ := pem.Decode(keyBytes)
+	if block == nil {
+		return nil, errors.New("Invalid key content")
+	}
 	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, err
 	}
 
 	return pubKey, nil
+}
+
+func downloadKey(addr string) ([]byte, error) {
+	url := fmt.Sprintf("http://%s/v1/scripts/api.crt", addr)
+	logrus.Infof("Downloading key from %s", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	buffer := &bytes.Buffer{}
+	_, err = io.Copy(buffer, resp.Body)
+	return buffer.Bytes(), err
 }
