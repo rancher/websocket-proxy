@@ -13,6 +13,11 @@
 			"Rev": "2e53eb673c4450614e3bca6f345197f9527dce71"
 		},
 		{
+			"ImportPath": "github.com/docker/docker/pkg/tlsconfig",
+			"Comment": "v1.4.1-10858-gcc12d2b",
+			"Rev": "cc12d2bfaae135e63b1f962ad80e6943dd995337"
+		},
+		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "215affda49addc4c8ef7e2534915df2c8c35c6cd"
 		},
@@ -40,6 +45,11 @@
 		{
 			"ImportPath": "github.com/rakyll/goini",
 			"Rev": "907cca0f578a5316fb864ec6992dc3d9730ec58c"
+		},
+		{
+			"ImportPath": "github.com/rancher/go-rancher/client",
+			"Comment": "v0.1.0-145-gce2d465",
+			"Rev": "ce2d465a0d29d81724fea8d4adbffbba86256fba"
 		}
 	]
 }
