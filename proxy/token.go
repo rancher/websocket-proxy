@@ -18,14 +18,17 @@ import (
 )
 
 const (
-	authHeader    = "Authorization"
-	projectHeader = "X-API-Project-Id"
+	authHeader     = "Authorization"
+	projectHeader  = "X-API-Project-Id"
+	defaultService = "swarm:2375"
 )
 
 type TokenLookup struct {
-	cache           *cache.Cache
-	client          http.Client
-	serviceProxyUrl string
+	cache            *cache.Cache
+	client           http.Client
+	cattleAccessKey  string
+	cattleServiceKey string
+	serviceProxyUrl  string
 }
 
 func NewTokenLookup(cattleAddr string) *TokenLookup {
@@ -69,7 +72,7 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 	vars := mux.Vars(r)
 	service, ok := vars["service"]
 	if !ok {
-		return "", nil
+		service = defaultService
 	}
 
 	parts := strings.SplitN(service, ":", 2)
@@ -92,19 +95,27 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, k := range []string{authHeader, projectHeader} {
-		newReq.Header.Set(k, r.Header.Get(k))
-	}
-
-	if project, ok := vars["project"]; ok {
-		newReq.Header.Set(projectHeader, project)
-	}
 
 	newReq.Header.Set("Content-Type", "application/json")
 
-	c, err := r.Cookie("token")
-	if err == nil {
-		newReq.AddCookie(c)
+	if r.TLS != nil && len(r.TLS.PeerCertificates) == 1 {
+		// Delegate auth based on TLS
+		newReq.SetBasicAuth(t.cattleAccessKey, t.cattleServiceKey)
+		newReq.Header.Set("X-API-Client-Access-Key", r.TLS.PeerCertificates[0].Subject.CommonName)
+	} else {
+		// Other forms of auth
+		for _, k := range []string{authHeader, projectHeader} {
+			newReq.Header.Set(k, r.Header.Get(k))
+		}
+
+		if project, ok := vars["project"]; ok {
+			newReq.Header.Set(projectHeader, project)
+		}
+
+		c, err := r.Cookie("token")
+		if err == nil {
+			newReq.AddCookie(c)
+		}
 	}
 
 	resp, err := t.client.Do(newReq)
@@ -140,6 +151,10 @@ func genKey(r *http.Request) string {
 	c, err := r.Cookie("token")
 	if err == nil {
 		hash.Write([]byte(c.String()))
+	}
+
+	if r.TLS != nil && len(r.TLS.PeerCertificates) == 1 {
+		hash.Write([]byte(r.TLS.PeerCertificates[0].Subject.CommonName))
 	}
 
 	return hex.EncodeToString(hash.Sum(nil))

@@ -37,6 +37,10 @@ func AddHeaders(req *http.Request, httpsPorts map[int]bool) {
 		}
 		req.Header.Set(xForwardedFor, ip)
 
+	} else if req.TLS != nil {
+		if h := req.Header.Get(xForwardedProto); h == "" {
+			req.Header.Set(xForwardedProto, "https")
+		}
 	}
 }
 
