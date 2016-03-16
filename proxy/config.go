@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"archive/zip"
 	"bytes"
 	"crypto/x509"
 	"encoding/pem"
@@ -10,8 +11,11 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+
+	"github.com/rancher/go-rancher/client"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/rakyll/globalconf"
@@ -23,10 +27,15 @@ type Config struct {
 	CattleAddr           string
 	ParentPid            int
 	ProxyProtoHttpsPorts map[int]bool
+	CattleAccessKey      string
+	CattleSecretKey      string
 }
 
 func GetConfig() (*Config, error) {
-	c := &Config{}
+	c := &Config{
+		CattleAccessKey: os.Getenv("CATTLE_ACCESS_KEY"),
+		CattleSecretKey: os.Getenv("CATTLE_SECRET_KEY"),
+	}
 	var keyFile string
 	var keyContents string
 	var proxyProtoHttpsPorts string
@@ -85,6 +94,10 @@ func GetConfig() (*Config, error) {
 	return c, nil
 }
 
+func (config *Config) GetCerts() (*Certs, error) {
+	return downloadCert(config.CattleAccessKey, config.CattleSecretKey, config.CattleAddr)
+}
+
 func ParsePublicKey(keyFile string) (interface{}, error) {
 	keyBytes, err := ioutil.ReadFile(keyFile)
 	if err != nil {
@@ -123,4 +136,81 @@ func downloadKey(addr string) ([]byte, error) {
 	buffer := &bytes.Buffer{}
 	_, err = io.Copy(buffer, resp.Body)
 	return buffer.Bytes(), err
+}
+
+type Certs struct {
+	CA   []byte
+	Cert []byte
+	Key  []byte
+}
+
+func downloadCert(accessKey, secretKey, addr string) (*Certs, error) {
+	url := fmt.Sprintf("http://%s/v1/schemas", addr)
+	c, err := client.NewRancherClient(&client.ClientOpts{
+		Url:       url,
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	opts := client.NewListOpts()
+	opts.Filters["publicValue"] = accessKey
+	opts.Filters["kind"] = "agentApiKey"
+	certs, err := c.Credential.List(opts)
+	if err != nil || len(certs.Data) == 0 {
+		return nil, fmt.Errorf("Failed to download certificate for %s: %v", accessKey, err)
+	}
+
+	downloadUrl := certs.Data[0].Links["certificate"]
+	logrus.Infof("Downloading certificate from %s", downloadUrl)
+	req, err := http.NewRequest("GET", downloadUrl, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(accessKey, secretKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	buffer := &bytes.Buffer{}
+	if _, err := io.Copy(buffer, resp.Body); err != nil {
+		return nil, err
+	}
+
+	zipReader, err := zip.NewReader(bytes.NewReader(buffer.Bytes()), int64(buffer.Len()))
+	if err != nil {
+		return nil, err
+	}
+
+	result := &Certs{}
+
+	for _, f := range zipReader.File {
+		in, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+
+		buffer := &bytes.Buffer{}
+		if _, err := io.Copy(buffer, in); err != nil {
+			return nil, err
+		}
+
+		switch f.Name {
+		case "ca.pem":
+			result.CA = buffer.Bytes()
+		case "cert.pem":
+			result.Cert = buffer.Bytes()
+		case "key.pem":
+			result.Key = buffer.Bytes()
+		}
+
+		in.Close()
+	}
+
+	return result, nil
 }

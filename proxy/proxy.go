@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net"
 	"net/http"
@@ -12,11 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/docker/docker/pkg/tlsconfig"
+
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
 	"github.com/rancherio/websocket-proxy/k8s"
 	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
+	proxyTls "github.com/rancherio/websocket-proxy/proxy/tls"
 )
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
@@ -112,8 +117,13 @@ func (s *ProxyStarter) StartProxy() error {
 		router: router,
 	}
 
+	swarmHandler := &SwarmHandler{
+		FrontendHandler: frontendHttpHandler,
+		DefaultHandler:  pcRouter,
+	}
+
 	server := &http.Server{
-		Handler:   pcRouter,
+		Handler:   swarmHandler,
 		Addr:      s.Config.ListenAddr,
 		ConnState: proxyprotocol.StateCleanup,
 	}
@@ -123,10 +133,45 @@ func (s *ProxyStarter) StartProxy() error {
 		log.Fatalf("Couldn't create listener: %s\n", err)
 	}
 
-	proxyListener := &proxyprotocol.Listener{listener}
+	listener = &proxyprotocol.Listener{listener}
 
-	err = server.Serve(proxyListener)
+	if listener, err = s.setupTls(listener); err != nil {
+		return err
+	}
+
+	err = server.Serve(listener)
 	return err
+}
+
+func (s *ProxyStarter) setupTls(listener net.Listener) (net.Listener, error) {
+	if s.Config.CattleAccessKey == "" {
+		return listener, nil
+	}
+
+	certs, err := s.Config.GetCerts()
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCert, err := tls.X509KeyPair(certs.Cert, certs.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	clientCas := x509.NewCertPool()
+	if !clientCas.AppendCertsFromPEM(certs.CA) {
+		return nil, err
+	}
+
+	tlsConfig := tlsconfig.ServerDefault
+	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+	tlsConfig.ClientCAs = clientCas
+	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+
+	return &proxyTls.SplitListener{
+		Listener: listener,
+		Config:   &tlsConfig,
+	}, err
 }
 
 type pathCleaner struct {

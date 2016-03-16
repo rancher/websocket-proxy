@@ -56,7 +56,9 @@ func (h *FrontendHTTPHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 	eof := false
 	url := *req.URL
 	url.Host = address
-	url.Path = vars["path"]
+	if path, ok := vars["path"]; ok {
+		url.Path = path
+	}
 	if !strings.HasPrefix(url.Path, "/") {
 		url.Path = "/" + url.Path
 	}
