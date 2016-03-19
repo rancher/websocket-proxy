@@ -29,6 +29,7 @@ type Config struct {
 	ProxyProtoHttpsPorts map[int]bool
 	CattleAccessKey      string
 	CattleSecretKey      string
+	TLSListenAddr        string
 }
 
 func GetConfig() (*Config, error) {
@@ -42,6 +43,7 @@ func GetConfig() (*Config, error) {
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
 	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
 	flag.StringVar(&c.ListenAddr, "listen-address", ":8080", "The tcp address to listen on.")
+	flag.StringVar(&c.TLSListenAddr, "tls-listen-address", "", "The tcp address to listen on for swarm.")
 	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
 	flag.IntVar(&c.ParentPid, "parent-pid", 0, "If provided, this process will exit when the specified parent process stops running.")
 	flag.StringVar(&proxyProtoHttpsPorts, "https-proxy-protocol-ports", "", "If proxy protocol is used, a list of proxy ports that will allow us to recognize that the connection was over https.")
