@@ -3,6 +3,7 @@ package proxy
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -135,17 +136,37 @@ func (s *ProxyStarter) StartProxy() error {
 
 	listener = &proxyprotocol.Listener{listener}
 
-	if listener, err = s.setupTls(listener); err != nil {
-		return err
+	if s.Config.TLSListenAddr != "" {
+		tlsConfig, err := s.setupTls()
+		if err != nil {
+			return err
+		}
+
+		if s.Config.TLSListenAddr == s.Config.ListenAddr {
+			listener = &proxyTls.SplitListener{
+				Listener: listener,
+				Config:   tlsConfig,
+			}
+		} else {
+			tlsListener, err := net.Listen("tcp", s.Config.TLSListenAddr)
+			if err != nil {
+				return err
+			}
+			tlsListener = &proxyprotocol.Listener{tlsListener}
+			go func() {
+				defer listener.Close()
+				log.Error(server.Serve(tls.NewListener(tlsListener, tlsConfig)))
+			}()
+		}
 	}
 
 	err = server.Serve(listener)
 	return err
 }
 
-func (s *ProxyStarter) setupTls(listener net.Listener) (net.Listener, error) {
+func (s *ProxyStarter) setupTls() (*tls.Config, error) {
 	if s.Config.CattleAccessKey == "" {
-		return listener, nil
+		return nil, fmt.Errorf("No access key supplied to download cert")
 	}
 
 	certs, err := s.Config.GetCerts()
@@ -168,10 +189,7 @@ func (s *ProxyStarter) setupTls(listener net.Listener) (net.Listener, error) {
 	tlsConfig.ClientCAs = clientCas
 	tlsConfig.Certificates = []tls.Certificate{tlsCert}
 
-	return &proxyTls.SplitListener{
-		Listener: listener,
-		Config:   &tlsConfig,
-	}, err
+	return &tlsConfig, nil
 }
 
 type pathCleaner struct {
