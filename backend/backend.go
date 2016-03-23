@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
@@ -39,12 +40,16 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 	// Write messages to proxy
 	go func() {
 		for {
-			message, ok := <-responseChannel
-			if !ok {
-				return
+			select {
+			case message, ok := <-responseChannel:
+				if !ok {
+					return
+				}
+				data := common.FormatMessage(message.Key, message.Type, message.Body)
+				ws.WriteMessage(1, []byte(data))
+			case <-time.After(time.Second * 5):
+				ws.WriteControl(websocket.PingMessage, []byte(""), time.Now().Add(time.Second))
 			}
-			data := common.FormatMessage(message.Key, message.Type, message.Body)
-			ws.WriteMessage(1, []byte(data))
 		}
 	}()
 
