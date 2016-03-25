@@ -98,7 +98,7 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 
 	newReq.Header.Set("Content-Type", "application/json")
 
-	if r.TLS != nil && len(r.TLS.PeerCertificates) == 1 {
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
 		// Delegate auth based on TLS
 		newReq.SetBasicAuth(t.cattleAccessKey, t.cattleServiceKey)
 		newReq.Header.Set("X-API-Client-Access-Key", r.TLS.PeerCertificates[0].Subject.CommonName)
