@@ -38,6 +38,7 @@ type Message struct {
 }
 
 type HttpMessage struct {
+	Hijack  bool                `json:"hijack,omitempty"`
 	Host    string              `json:"host,omitempty"`
 	Method  string              `json:"method,omitempty"`
 	URL     string              `json:"url,omitempty"`

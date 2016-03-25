@@ -1,16 +1,14 @@
 package proxy
 
 import (
-	"encoding/json"
+	"bufio"
+	"errors"
 	"io"
 	"net/http"
-	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/mux"
 
-	"github.com/rancherio/websocket-proxy/common"
 	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
 )
 
@@ -21,118 +19,97 @@ type FrontendHTTPHandler struct {
 }
 
 func (h *FrontendHTTPHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if err := h.serveHTTP(rw, req); err != nil {
+		log.Errorf("Failed to handle %s %s: %v", req.Method, req.URL.String(), err)
+		rw.WriteHeader(500)
+		rw.Write([]byte(err.Error()))
+	}
+}
+
+func (h *FrontendHTTPHandler) serveHTTP(rw http.ResponseWriter, req *http.Request) error {
 	token, hostKey, authed, err := h.authAndLookup(req)
 	if err != nil {
 		http.Error(rw, "Service Unavailable", 503)
-		return
+		return nil
 	}
 	if !authed {
 		http.Error(rw, "Failed authentication", 401)
-		return
+		return nil
 	}
 
-	msgKey, respChannel, err := h.backend.initializeClient(hostKey)
-	if err != nil {
-		log.Errorf("Error during initialization: [%v]", err)
-		return
-	}
-	defer h.backend.closeConnection(hostKey, msgKey)
-
-	data := token.Claims["proxy"].(map[string]interface{})
+	data, _ := token.Claims["proxy"].(map[string]interface{})
 	address, _ := data["address"].(string)
 	scheme, _ := data["scheme"].(string)
-
-	if err = h.backend.connect(hostKey, msgKey, "/v1/container-proxy/"); err != nil {
-		return
-	}
 
 	proxyprotocol.AddHeaders(req, h.HttpsPorts)
 	proxyprotocol.AddForwardedFor(req)
 
-	vars := mux.Vars(req)
-	buf := make([]byte, 4096, 4096)
-
-	// Send request messages to backend
-	eof := false
-	url := *req.URL
-	url.Host = address
-	if path, ok := vars["path"]; ok {
-		url.Path = path
+	reader, writer, err := NewHttpPipe(rw, h.backend, hostKey)
+	if err != nil {
+		log.Errorf("Failed to construct pipe to backend %s: %v", hostKey, err)
+		return err
 	}
-	if !strings.HasPrefix(url.Path, "/") {
-		url.Path = "/" + url.Path
-	}
+	defer writer.Close()
+	defer reader.Close()
 
-	if scheme == "" {
-		url.Scheme = "http"
-	} else {
-		url.Scheme = scheme
+	hijack := h.shouldHijack(req)
+
+	if err := writer.WriteRequest(req, hijack, address, scheme); err != nil {
+		log.Errorf("Failed to write request to backend: %v", err)
+		return err
 	}
 
-	m := common.HttpMessage{
-		Host:    req.Host,
-		Method:  req.Method,
-		URL:     url.String(),
-		Headers: map[string][]string(req.Header),
-	}
+	var input io.Reader
+	var output io.Writer
 
-	for !eof {
-		count, err := req.Body.Read(buf)
-		if err == io.EOF {
-			eof = true
-		} else if err != nil {
-			return
+	if hijack {
+		hijacker, ok := rw.(http.Hijacker)
+		if !ok {
+			return errors.New("Invalid input")
 		}
 
-		m.Body = buf[:count]
-		m.EOF = eof
-		data, err := json.Marshal(&m)
+		httpConn, buf, err := hijacker.Hijack()
 		if err != nil {
-			return
+			log.Errorf("Failed to hijack connection: %v", err)
+			return err
 		}
+		defer httpConn.Close()
+		defer buf.Flush()
 
-		if err = h.backend.send(hostKey, msgKey, string(data)); err != nil {
-			return
-		}
-
-		m = common.HttpMessage{}
+		input = buf
+		output = buf
+	} else {
+		input = req.Body
+		output = rw
 	}
 
-	for message := range respChannel {
-		switch message.Type {
-		case common.Body:
-			if _, err := writeResponse(rw, message.Body); err != nil {
-				log.Debugf("Failed to write response, closing", err)
-			}
-		case common.Close:
-			h.backend.closeConnection(hostKey, msgKey)
-		}
+	go func() {
+		io.Copy(writer, input)
+		writer.Close()
+	}()
+	_, err = io.Copy(flusher{output}, reader)
+	return err
+}
+
+type flusher struct {
+	writer io.Writer
+}
+
+func (f flusher) Write(b []byte) (int, error) {
+	defer flush(f.writer)
+	return f.writer.Write(b)
+}
+
+func flush(writer io.Writer) {
+	if buf, ok := writer.(*bufio.ReadWriter); ok {
+		buf.Flush()
+	} else if buf, ok := writer.(http.Flusher); ok {
+		buf.Flush()
 	}
 }
 
-func writeResponse(rw http.ResponseWriter, message string) (bool, error) {
-	var response common.HttpMessage
-	if err := json.Unmarshal([]byte(message), &response); err != nil {
-		return false, err
-	}
-
-	for k, v := range response.Headers {
-		for _, vp := range v {
-			rw.Header().Add(k, vp)
-		}
-	}
-
-	if response.Code > 0 {
-		rw.WriteHeader(response.Code)
-	}
-
-	if len(response.Body) > 0 {
-		if _, err := rw.Write(response.Body); err != nil {
-			return false, err
-		}
-	}
-
-	return response.EOF, nil
+func (h *FrontendHTTPHandler) shouldHijack(req *http.Request) bool {
+	return req.Header.Get("Connection") == "Upgrade"
 }
 
 func (h *FrontendHTTPHandler) authAndLookup(req *http.Request) (*jwt.Token, string, bool, error) {
