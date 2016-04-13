@@ -73,6 +73,7 @@ func (s *ProxyStarter) StartProxy() error {
 	router := mux.NewRouter()
 
 	router.HandleFunc("/version", k8s.Version)
+	router.HandleFunc("/swaggerapi/api/v1", k8s.Swagger)
 
 	for _, p := range s.BackendPaths {
 		router.Handle(p, backendHandler).Methods("GET")
