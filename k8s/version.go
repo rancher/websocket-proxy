@@ -2,15 +2,15 @@ package k8s
 
 import "net/http"
 
-const response = `{
-	"major": "1",
-	"minor": "2+",
-	"gitVersion": "v1.2.0-alpha.8.15+3f0153c9163cee-dirty",
-	"gitCommit": "3f0153c9163cee5aafdcf6fdd21e783495f5bba4",
-	"gitTreeState": "dirty"
+const version = `{
+  "major": "1",
+  "minor": "2+",
+  "gitVersion": "v1.2.0-rancher-1",
+  "gitCommit": "ed6532f975cff184196dbe214de8fa0198b415ef",
+  "gitTreeState": "clean"
 }`
 
 func Version(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
-	rw.Write([]byte(response))
+	rw.Write([]byte(version))
 }
