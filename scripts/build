@@ -10,15 +10,6 @@ set_project_vars
 
 GITCOMMIT=`git rev-parse --short HEAD`
 
-if [ -L ${PACKAGE} ]; then
-    rm ${PACKAGE}
-fi
-
-if [ ! -e ${PACKAGE} ]; then
-    mkdir -p $(dirname $PACKAGE)
-    ln -s $(pwd) $PACKAGE
-fi
-
 rm -rf build
 mkdir -p build
-go build -o build/${PROJECT} -a -tags "netgo" -installsuffix netgo -ldflags "-linkmode external -extldflags -static -X main.GITCOMMIT $GITCOMMIT"
+go build -o build/${PROJECT} -a -tags "netgo" -installsuffix netgo -ldflags "-linkmode external -extldflags -static -X main.GITCOMMIT=$GITCOMMIT"
