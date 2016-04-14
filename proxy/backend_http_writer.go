@@ -7,7 +7,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
 type BackendHttpWriter struct {

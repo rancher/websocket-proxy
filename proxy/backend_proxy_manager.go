@@ -6,7 +6,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
 type backendProxy interface {

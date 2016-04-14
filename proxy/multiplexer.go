@@ -8,7 +8,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pborman/uuid"
 
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
 type multiplexer struct {
