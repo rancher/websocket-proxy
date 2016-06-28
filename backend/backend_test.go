@@ -10,9 +10,9 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/common"
-	"github.com/rancherio/websocket-proxy/proxy"
-	"github.com/rancherio/websocket-proxy/test_utils"
+	"github.com/rancher/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/proxy"
+	"github.com/rancher/websocket-proxy/test_utils"
 )
 
 var privateKey interface{}

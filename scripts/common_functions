@@ -7,8 +7,7 @@ function set_project_vars() {
         . .build_envs
     fi
     
-    PACKAGE=./gopath/src/$(<.package)
-    PROJECT=$(basename $PACKAGE)
+    PROJECT=$(basename $(pwd))
     
-    export GOPATH=$(pwd)/Godeps/_workspace:$(pwd)/gopath
+    export GOPATH=$(cd ../../../../; pwd)
 }

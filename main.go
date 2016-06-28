@@ -3,7 +3,7 @@ package main
 import (
 	log "github.com/Sirupsen/logrus"
 
-	"github.com/rancherio/websocket-proxy/proxy"
+	"github.com/rancher/websocket-proxy/proxy"
 )
 
 func main() {

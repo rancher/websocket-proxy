@@ -9,7 +9,7 @@ install_go()
     # Taken from Google/golang Dockerfile...
     apt-get update -y && apt-get install --no-install-recommends -y -q curl build-essential \
         ca-certificates git mercurial bzr
-    mkdir /goroot && curl https://storage.googleapis.com/golang/go1.4.linux-amd64.tar.gz | tar xvzf - -C /goroot --strip-components=1
+    mkdir /goroot && curl https://storage.googleapis.com/golang/go1.6.linux-amd64.tar.gz | tar xvzf - -C /goroot --strip-components=1
     echo $PWD
     echo "export GOROOT=\"/goroot\"" > ./build/bootstrap.envs
     echo "export PATH=\"$PATH:/goroot/bin\"" >> ./build/bootstrap.envs

@@ -9,7 +9,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/dgrijalva/jwt-go"
 
-	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
+	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
 )
 
 type FrontendHTTPHandler struct {
