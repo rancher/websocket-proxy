@@ -28,3 +28,5 @@ _testmain.go
 
 dist
 websocket-proxy
+bin
+.dapper

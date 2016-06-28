@@ -2,6 +2,10 @@
 
 cd $(dirname $0)/..
 
+ARCH=${ARCH:?"ARCH not set"}
+SUFFIX=""
+[ "${ARCH}" != "amd64" ] && SUFFIX="_${ARCH}"
+
 . ./scripts/common_functions
 
 set_project_vars
@@ -11,5 +15,5 @@ mkdir -p dist/artifacts
 
 cd build
 echo "Packaging:"
-tar cvJf ../dist/artifacts/$PROJECT.tar.xz .
-echo Created dist/artifacts/$PROJECT.tar.xz
+tar cvJf ../dist/artifacts/${PROJECT}${SUFFIX}.tar.xz .
+echo Created dist/artifacts/${PROJECT}${SUFFIX}.tar.xz

@@ -1,11 +1,6 @@
 #!/bin/bash
-
 set -e
 
 cd $(dirname $0)/..
 
-. ./scripts/common_functions
-
-set_project_vars
-
-rm -rf build dist bin gopath
+rm -rf build dist bin
