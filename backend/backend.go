@@ -39,6 +39,8 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 
 	// Write messages to proxy
 	go func() {
+		ticker := time.NewTicker(time.Second * 5)
+		defer ticker.Stop()
 		for {
 			select {
 			case message, ok := <-responseChannel:
@@ -47,11 +49,14 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 				}
 				data := common.FormatMessage(message.Key, message.Type, message.Body)
 				ws.WriteMessage(1, []byte(data))
-			case <-time.After(time.Second * 5):
+			case <-ticker.C:
 				ws.WriteControl(websocket.PingMessage, []byte(""), time.Now().Add(time.Second))
 			}
 		}
 	}()
+
+	ph := newPongHandler(ws)
+	ws.SetPongHandler(ph.handle)
 
 	// Read and route messages from proxy
 	for {
