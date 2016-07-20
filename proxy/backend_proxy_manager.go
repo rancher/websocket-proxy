@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
-
 	"github.com/rancherio/websocket-proxy/common"
 )
 
@@ -96,7 +96,10 @@ func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) 
 }
 
 func (b *backendProxyManager) removeBackend(backendKey string) {
+	logrus.Infof("Acquiring lock to remove backend %v.", backendKey)
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	delete(b.multiplexers, backendKey)
+	logrus.Infof("Removed backend %v.", backendKey)
 }

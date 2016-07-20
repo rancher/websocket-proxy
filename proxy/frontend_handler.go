@@ -114,12 +114,14 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 }
 
 func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
-	token, err := parseToken(req, h.parsedPublicKey)
+	token, tokenParam, err := parseToken(req, h.parsedPublicKey)
 	if err != nil {
+		log.Warnf("Error parsing frontend token: %v. Failing auth. Token parameter: %v", err, tokenParam)
 		return nil, "", false
 	}
 
 	if !token.Valid {
+		log.Warnf("Token not valid. Failing auth. Token parameter: %v.", tokenParam)
 		return nil, "", false
 	}
 
@@ -129,7 +131,7 @@ func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
 			return token, hostKey, true
 		}
 	}
-	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
+	log.Warnf("Invalid backend host requested: %v.", hostUuid)
 	return nil, "", false
 }
 
@@ -138,7 +140,7 @@ func closeConnection(ws *websocket.Conn) {
 	ws.Close()
 }
 
-func parseToken(req *http.Request, parsedPublicKey interface{}) (*jwt.Token, error) {
+func parseToken(req *http.Request, parsedPublicKey interface{}) (*jwt.Token, string, error) {
 	tokenString := ""
 	if authHeader := req.Header.Get("Authorization"); authHeader != "" {
 		if len(authHeader) > 6 && strings.EqualFold("bearer", authHeader[0:6]) {
@@ -151,11 +153,11 @@ func parseToken(req *http.Request, parsedPublicKey interface{}) (*jwt.Token, err
 	}
 
 	if tokenString == "" {
-		return nil, fmt.Errorf("No JWT provided")
+		return nil, "", fmt.Errorf("No JWT provided")
 	}
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return parsedPublicKey, nil
 	})
-	return token, err
+	return token, tokenString, err
 }

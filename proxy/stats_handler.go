@@ -131,7 +131,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 	tokenString := req.URL.Query().Get("token")
 	token, err := parseRequestToken(tokenString, h.parsedPublicKey)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
+		log.Errorf("Error parsing stats token. Failing auth. Error: %v", err)
 		return nil, false
 	}
 
@@ -144,7 +144,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 	if multiHost {
 		projectsOrServices, err := getProjectOrService(token)
 		if err != nil {
-			log.WithFields(log.Fields{"error": err}).Error("Error parsing token")
+			log.Errorf("Error getting project or service info from token %v.", token)
 			return nil, false
 		}
 		for _, projectOrService := range projectsOrServices {
@@ -156,7 +156,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 			}
 			innerJwtToken, err := parseRequestToken(innerTokenString, h.parsedPublicKey)
 			if err != nil {
-				log.WithFields(log.Fields{"error": err}).Error("Error parsing token")
+				log.Errorf("Error getting inner token: %v. Inner token parameter: %v.", err, innerTokenString)
 				return nil, false
 			}
 			hostUuid, found := h.extractHostUuid(innerJwtToken)
@@ -165,7 +165,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 			}
 			urlString, ok := data["url"]
 			if !ok {
-				log.WithFields(log.Fields{"error": err}).Error("Error parsing token")
+				log.Errorf("Could't find url field in inner token %v.", data)
 				return nil, false
 			}
 			urlString = urlString + "?token=" + innerTokenString

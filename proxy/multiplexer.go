@@ -63,6 +63,7 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 		for {
 			msgType, msg, err := ws.ReadMessage()
 			if err != nil {
+				log.Infof("Shutting down backend %v. Connection closed because: %v.", m.backendKey, err)
 				m.shutdown(stop)
 				return
 			}
