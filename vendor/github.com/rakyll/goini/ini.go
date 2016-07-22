@@ -211,7 +211,7 @@ func (dict Dict) GetSections() []string {
 	size := len(dict)
 	sections := make([]string, size)
 	i := 0
-	for section := range dict {
+	for section, _ := range dict {
 		sections[i] = section
 		i++
 	}
