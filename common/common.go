@@ -37,7 +37,7 @@ type Message struct {
 	Body string
 }
 
-type HttpMessage struct {
+type HTTPMessage struct {
 	Hijack  bool                `json:"hijack,omitempty"`
 	Host    string              `json:"host,omitempty"`
 	Method  string              `json:"method,omitempty"`

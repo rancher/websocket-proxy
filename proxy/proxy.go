@@ -27,7 +27,7 @@ import (
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
 
-type ProxyStarter struct {
+type Starter struct {
 	BackendPaths       []string
 	FrontendPaths      []string
 	FrontendHTTPPaths  []string
@@ -37,7 +37,7 @@ type ProxyStarter struct {
 	Config             *Config
 }
 
-func (s *ProxyStarter) StartProxy() error {
+func (s *Starter) StartProxy() error {
 	backendMultiplexers := make(map[string]*multiplexer)
 	bpm := &backendProxyManager{
 		multiplexers: backendMultiplexers,
@@ -59,12 +59,12 @@ func (s *ProxyStarter) StartProxy() error {
 		parsedPublicKey: s.Config.PublicKey,
 	}
 
-	frontendHttpHandler := &FrontendHTTPHandler{
+	frontendHTTPHandler := &FrontendHTTPHandler{
 		FrontendHandler: FrontendHandler{
 			backend:         bpm,
 			parsedPublicKey: s.Config.PublicKey,
 		},
-		HttpsPorts:  s.Config.ProxyProtoHttpsPorts,
+		HTTPSPorts:  s.Config.ProxyProtoHTTPSPorts,
 		TokenLookup: NewTokenLookup(s.Config.CattleAddr),
 	}
 
@@ -82,7 +82,7 @@ func (s *ProxyStarter) StartProxy() error {
 		router.Handle(p, frontendHandler).Methods("GET")
 	}
 	for _, p := range s.FrontendHTTPPaths {
-		router.Handle(p, frontendHttpHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH")
+		router.Handle(p, frontendHTTPHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH")
 	}
 	for _, p := range s.StatsPaths {
 		router.Handle(p, statsHandler).Methods("GET")
@@ -120,7 +120,7 @@ func (s *ProxyStarter) StartProxy() error {
 	}
 
 	swarmHandler := &SwarmHandler{
-		FrontendHandler: frontendHttpHandler,
+		FrontendHandler: frontendHTTPHandler,
 		DefaultHandler:  pcRouter,
 	}
 
@@ -138,7 +138,7 @@ func (s *ProxyStarter) StartProxy() error {
 	listener = &proxyprotocol.Listener{listener}
 
 	if s.Config.TLSListenAddr != "" {
-		tlsConfig, err := s.setupTls()
+		tlsConfig, err := s.setupTLS()
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (s *ProxyStarter) StartProxy() error {
 	return err
 }
 
-func (s *ProxyStarter) setupTls() (*tls.Config, error) {
+func (s *Starter) setupTLS() (*tls.Config, error) {
 	if s.Config.CattleAccessKey == "" {
 		return nil, fmt.Errorf("No access key supplied to download cert")
 	}
@@ -222,7 +222,7 @@ func newCattleProxies(config *Config) (*proxyProtocolConverter, *cattleWSProxy) 
 
 	reverseProxy := &proxyProtocolConverter{
 		reverseProxy: cattleProxy,
-		httpsPorts:   config.ProxyProtoHttpsPorts,
+		httpsPorts:   config.ProxyProtoHTTPSPorts,
 	}
 
 	wsProxy := &cattleWSProxy{

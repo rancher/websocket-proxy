@@ -28,13 +28,13 @@ type TokenLookup struct {
 	client           http.Client
 	cattleAccessKey  string
 	cattleServiceKey string
-	serviceProxyUrl  string
+	serviceProxyURL  string
 }
 
 func NewTokenLookup(cattleAddr string) *TokenLookup {
 	t := &TokenLookup{
 		cache:           cache.New(5*time.Minute, 30*time.Second),
-		serviceProxyUrl: fmt.Sprintf("http://%s/v1/serviceproxies", cattleAddr),
+		serviceProxyURL: fmt.Sprintf("http://%s/v1/serviceproxies", cattleAddr),
 	}
 	t.client.Timeout = 60 * time.Second
 	return t
@@ -63,9 +63,8 @@ func (t *TokenLookup) getFromCache(r *http.Request) (string, string) {
 	value, ok := t.cache.Get(key)
 	if ok {
 		return key, value.(string)
-	} else {
-		return key, ""
 	}
+	return key, ""
 }
 
 func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
@@ -90,8 +89,8 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 		Port:    port,
 	})
 
-	logrus.Debugf("Calling rancher to get token: %s", t.serviceProxyUrl)
-	newReq, err := http.NewRequest("POST", t.serviceProxyUrl, bytes.NewReader(body))
+	logrus.Debugf("Calling rancher to get token: %s", t.serviceProxyURL)
+	newReq, err := http.NewRequest("POST", t.serviceProxyURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

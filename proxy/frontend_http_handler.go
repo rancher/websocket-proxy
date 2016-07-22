@@ -14,7 +14,7 @@ import (
 
 type FrontendHTTPHandler struct {
 	FrontendHandler
-	HttpsPorts  map[int]bool
+	HTTPSPorts  map[int]bool
 	TokenLookup *TokenLookup
 }
 
@@ -41,10 +41,10 @@ func (h *FrontendHTTPHandler) serveHTTP(rw http.ResponseWriter, req *http.Reques
 	address, _ := data["address"].(string)
 	scheme, _ := data["scheme"].(string)
 
-	proxyprotocol.AddHeaders(req, h.HttpsPorts)
+	proxyprotocol.AddHeaders(req, h.HTTPSPorts)
 	proxyprotocol.AddForwardedFor(req)
 
-	reader, writer, err := NewHttpPipe(rw, h.backend, hostKey)
+	reader, writer, err := NewHTTPPipe(rw, h.backend, hostKey)
 	if err != nil {
 		log.Errorf("Failed to construct pipe to backend %s: %v", hostKey, err)
 		return err
@@ -135,12 +135,12 @@ func (h *FrontendHTTPHandler) authAndLookup(req *http.Request) (*jwt.Token, stri
 		return nil, "", false, nil
 	}
 
-	hostUuid, found := token.Claims["hostUuid"]
+	hostUUID, found := token.Claims["hostUuid"]
 	if found {
-		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
+		if hostKey, ok := hostUUID.(string); ok && h.backend.hasBackend(hostKey) {
 			return token, hostKey, true, nil
 		}
 	}
-	log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid backend host requested.")
+	log.WithFields(log.Fields{"hostUuid": hostUUID}).Infof("Invalid backend host requested.")
 	return nil, "", false, nil
 }

@@ -159,7 +159,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 				log.Errorf("Error getting inner token: %v. Inner token parameter: %v.", err, innerTokenString)
 				return nil, false
 			}
-			hostUuid, found := h.extractHostUuid(innerJwtToken)
+			hostUUID, found := h.extractHostUUID(innerJwtToken)
 			if !found {
 				return nil, false
 			}
@@ -169,15 +169,15 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 				return nil, false
 			}
 			urlString = urlString + "?token=" + innerTokenString
-			statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUuid, url: urlString})
+			statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUUID, url: urlString})
 		}
 	} else {
-		hostUuid, found := h.extractHostUuid(token)
+		hostUUID, found := h.extractHostUUID(token)
 		if !found {
 			log.Error("could not find host uuid")
 			return nil, false
 		}
-		statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUuid, url: req.URL.String()})
+		statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUUID, url: req.URL.String()})
 	}
 	return statsInfoStructs, true
 }
@@ -214,15 +214,15 @@ func getProjectOrService(token *jwt.Token) ([]map[string]string, error) {
 	return nil, fmt.Errorf("empty token")
 }
 
-func (h *StatsHandler) extractHostUuid(token *jwt.Token) (string, bool) {
-	hostUuid, found := token.Claims["hostUuid"]
+func (h *StatsHandler) extractHostUUID(token *jwt.Token) (string, bool) {
+	hostUUID, found := token.Claims["hostUuid"]
 	if !found {
-		log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("HostUuid not found in token.")
+		log.WithFields(log.Fields{"hostUuid": hostUUID}).Infof("HostUuid not found in token.")
 		return "", false
 	}
-	hostKey, ok := hostUuid.(string)
+	hostKey, ok := hostUUID.(string)
 	if !ok || !h.backend.hasBackend(hostKey) {
-		log.WithFields(log.Fields{"hostUuid": hostUuid}).Infof("Invalid HostUuid.")
+		log.WithFields(log.Fields{"hostUuid": hostUUID}).Infof("Invalid HostUuid.")
 		return "", false
 	}
 	return hostKey, true

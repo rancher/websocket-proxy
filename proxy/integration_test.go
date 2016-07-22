@@ -21,16 +21,16 @@ import (
 
 	"github.com/rancher/websocket-proxy/backend"
 	"github.com/rancher/websocket-proxy/common"
-	"github.com/rancher/websocket-proxy/test_utils"
+	"github.com/rancher/websocket-proxy/testutils"
 )
 
 var privateKey interface{}
 
 func TestMain(m *testing.M) {
 	c := getTestConfig()
-	privateKey = test_utils.ParseTestPrivateKey()
+	privateKey = testutils.ParseTestPrivateKey()
 
-	ps := &ProxyStarter{
+	ps := &Starter{
 		BackendPaths:       []string{"/v1/connectbackend"},
 		FrontendPaths:      []string{"/v1/binaryecho", "/v1/echo", "/v1/oneanddone", "/v1/repeat", "/v1/sendafterclose"},
 		StatsPaths:         []string{"/v1/hostStats/project"},
@@ -47,11 +47,11 @@ func TestMain(m *testing.M) {
 	handlers["/v1/repeat"] = &repeatingHandler{}
 	handlers["/v1/sendafterclose"] = &sendAfterCloseHandler{}
 	handlers["/v1/hostStats/project"] = &statsHandler{1}
-	signedToken := test_utils.CreateBackendToken("1", privateKey)
+	signedToken := testutils.CreateBackendToken("1", privateKey)
 	url := "ws://localhost:1111/v1/connectbackend?token=" + signedToken
 	go backend.ConnectToProxy(url, handlers)
 
-	signedToken = test_utils.CreateBackendToken("2", privateKey)
+	signedToken = testutils.CreateBackendToken("2", privateKey)
 	handlers2 := make(map[string]backend.Handler)
 	handlers2["/v1/echo"] = &echoHandler{}
 	handlers2["/v1/binaryecho"] = &binaryEchoHandler{}
@@ -112,7 +112,7 @@ func getWsHandler() func(rw http.ResponseWriter, req *http.Request) {
 }
 
 func TestEndToEnd(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/echo?token="+signedToken, t)
 	sendAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
@@ -120,7 +120,7 @@ func TestEndToEnd(t *testing.T) {
 }
 
 func TestBinary(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	ws := getBinaryClientConnection("ws://localhost:1111/v1/binaryecho?token="+signedToken, t)
 	sendBinaryAndAssertReply(ws, strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10), t)
 	time.Sleep(1 * time.Millisecond) // Ensure different timestamp
@@ -128,7 +128,7 @@ func TestBinary(t *testing.T) {
 }
 
 func TestAuthHeaderBearerToken(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
 	headers.Add("Authorization", "Bearer "+signedToken)
@@ -142,7 +142,7 @@ func TestAuthHeaderBearerToken(t *testing.T) {
 }
 
 func TestBackendClosesConnection(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?token="+signedToken, t)
 
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
@@ -159,7 +159,7 @@ func TestBackendClosesConnection(t *testing.T) {
 }
 
 func TestFrontendClosesConnection(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/oneanddone?token="+signedToken, t)
 	if err := ws.WriteControl(websocket.CloseMessage, nil, time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
@@ -171,7 +171,7 @@ func TestFrontendClosesConnection(t *testing.T) {
 }
 
 func TestBackendSendAfterClose(t *testing.T) {
-	signedToken := test_utils.CreateToken("1", privateKey)
+	signedToken := testutils.CreateToken("1", privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/sendafterclose?token="+signedToken, t)
 	go func() {
 		for {
@@ -193,15 +193,15 @@ func TestMultiHostStats(t *testing.T) {
 		"project": []map[string]string{
 			{
 				"url":   "ws://localhost:1111/v1/hostStats/project",
-				"token": test_utils.CreateToken("1", privateKey),
+				"token": testutils.CreateToken("1", privateKey),
 			},
 			{
 				"url":   "ws://localhost:1111/v1/hostStats/project",
-				"token": test_utils.CreateToken("2", privateKey),
+				"token": testutils.CreateToken("2", privateKey),
 			},
 		},
 	}
-	signedToken := test_utils.CreateTokenWithPayload(payload, privateKey)
+	signedToken := testutils.CreateTokenWithPayload(payload, privateKey)
 	ws := getClientConnection("ws://localhost:1111/v1/hostStats/project?token="+signedToken, t)
 	one := false
 	two := false
@@ -411,7 +411,7 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 
 func getTestConfig() *Config {
 
-	pubKey, err := ParsePublicKey("../test_utils/public.pem")
+	pubKey, err := ParsePublicKey("../testutils/public.pem")
 	if err != nil {
 		log.Fatal("Failed to parse key. ", err)
 	}
@@ -420,7 +420,7 @@ func getTestConfig() *Config {
 		PublicKey:            pubKey,
 		ListenAddr:           "127.0.0.1:1111",
 		CattleAddr:           "127.0.0.1:3333",
-		ProxyProtoHttpsPorts: ports,
+		ProxyProtoHTTPSPorts: ports,
 	}
 	return config
 }
@@ -429,7 +429,7 @@ func TestManyChattyConnections(t *testing.T) {
 	// Spin up a hundred connections. The repeat handler will send a new message to each one
 	// every 10 milliseconds. Stop after 5 seconds. This is just to prove that the proxy can handle a little load.
 	for i := 1; i <= 100; i++ {
-		signedToken := test_utils.CreateToken("1", privateKey)
+		signedToken := testutils.CreateToken("1", privateKey)
 		msg := strconv.FormatInt(time.Now().UnixNano()/int64(time.Millisecond), 10)
 		ws := getClientConnection("ws://localhost:1111/v1/repeat?token="+signedToken+"&msg="+msg, t)
 		go func(expectedPrefix string) {

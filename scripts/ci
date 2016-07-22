@@ -5,6 +5,5 @@ cd $(dirname $0)
 
 ./build
 ./test
-# TODO Fix lint and vet errors and enable validate script
-#./validate
+./validate
 ./package

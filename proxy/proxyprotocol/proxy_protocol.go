@@ -1,4 +1,4 @@
-// This code is adapted from:
+// Package proxyprotocol is adapted from:
 // https://github.com/armon/go-proxyproto
 //
 // The MIT License (MIT)
@@ -59,7 +59,6 @@ type Conn struct {
 	once      sync.Once
 }
 
-// Data structure representing proxy protocol information.
 type ProxyProtoInfo struct {
 	Protocol   string
 	ClientAddr *net.TCPAddr

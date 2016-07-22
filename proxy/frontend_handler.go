@@ -125,13 +125,13 @@ func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
 		return nil, "", false
 	}
 
-	hostUuid, found := token.Claims["hostUuid"]
+	hostUUID, found := token.Claims["hostUuid"]
 	if found {
-		if hostKey, ok := hostUuid.(string); ok && h.backend.hasBackend(hostKey) {
+		if hostKey, ok := hostUUID.(string); ok && h.backend.hasBackend(hostKey) {
 			return token, hostKey, true
 		}
 	}
-	log.Warnf("Invalid backend host requested: %v.", hostUuid)
+	log.Warnf("Invalid backend host requested: %v.", hostUUID)
 	return nil, "", false
 }
 

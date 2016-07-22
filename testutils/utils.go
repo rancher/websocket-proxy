@@ -1,4 +1,4 @@
-package test_utils
+package testutils
 
 import (
 	"io/ioutil"
@@ -17,9 +17,9 @@ func CreateTokenWithPayload(payload map[string]interface{}, privateKey interface
 	return signed
 }
 
-func CreateToken(hostUuid string, privateKey interface{}) string {
+func CreateToken(hostUUID string, privateKey interface{}) string {
 	token := jwt.New(jwt.GetSigningMethod("RS256"))
-	token.Claims["hostUuid"] = hostUuid
+	token.Claims["hostUuid"] = hostUUID
 	signed, err := token.SignedString(privateKey)
 	if err != nil {
 		log.Fatal("Failed to parse private key.", err)
@@ -27,9 +27,9 @@ func CreateToken(hostUuid string, privateKey interface{}) string {
 	return signed
 }
 
-func CreateBackendToken(reportedUuid string, privateKey interface{}) string {
+func CreateBackendToken(reportedUUID string, privateKey interface{}) string {
 	token := jwt.New(jwt.GetSigningMethod("RS256"))
-	token.Claims["reportedUuid"] = reportedUuid
+	token.Claims["reportedUuid"] = reportedUUID
 	signed, err := token.SignedString(privateKey)
 	if err != nil {
 		log.Fatal("Failed to parse private key.", err)
@@ -38,7 +38,7 @@ func CreateBackendToken(reportedUuid string, privateKey interface{}) string {
 }
 
 func ParseTestPrivateKey() interface{} {
-	keyBytes, err := ioutil.ReadFile("../test_utils/private.pem")
+	keyBytes, err := ioutil.ReadFile("../testutils/private.pem")
 	if err != nil {
 		log.Fatal("Failed to parse private key.", err)
 	}
@@ -52,7 +52,7 @@ func ParseTestPrivateKey() interface{} {
 }
 
 func ParseTestPublicKey() interface{} {
-	keyBytes, err := ioutil.ReadFile("../test_utils/public.pem")
+	keyBytes, err := ioutil.ReadFile("../testutils/public.pem")
 	if err != nil {
 		log.Fatal("Failed to parse public key.", err)
 	}

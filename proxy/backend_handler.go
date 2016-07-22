@@ -41,15 +41,15 @@ func (h *BackendHandler) auth(req *http.Request) (string, bool) {
 		return "", false
 	}
 
-	reportedUuid, found := token.Claims["reportedUuid"]
+	reportedUUID, found := token.Claims["reportedUuid"]
 	if !found {
 		log.Warnf("Token did not have a reportedUuid. Failing auth. Token parameter: %v", tokenParam)
 		return "", false
 	}
 
-	hostKey, ok := reportedUuid.(string)
+	hostKey, ok := reportedUUID.(string)
 	if !ok || hostKey == "" {
-		log.Warnf("Token's reported uuid claim %v could not be parsed as a string. Token parameter: %v", reportedUuid, tokenParam)
+		log.Warnf("Token's reported uuid claim %v could not be parsed as a string. Token parameter: %v", reportedUUID, tokenParam)
 		return "", false
 	}
 
