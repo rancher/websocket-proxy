@@ -6,6 +6,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
+	"github.com/pborman/uuid"
 	"github.com/rancherio/websocket-proxy/common"
 )
 
@@ -19,7 +20,7 @@ type backendProxy interface {
 
 type proxyManager interface {
 	addBackend(backendKey string, ws *websocket.Conn)
-	removeBackend(backendKey string)
+	removeBackend(backendKey, sessionId string)
 }
 
 type backendProxyManager struct {
@@ -79,9 +80,13 @@ func (b *backendProxyManager) hasBackend(backendKey string) bool {
 }
 
 func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) {
+	sessionId := uuid.New()
+	logrus.Infof("Registering backend for host %v with session ID %v.", backendKey, sessionId)
+
 	msgs := make(chan string, 10)
 	clients := make(map[string]chan<- common.Message)
 	m := &multiplexer{
+		backendSessionId:  sessionId,
 		backendKey:        backendKey,
 		messagesToBackend: msgs,
 		frontendChans:     clients,
@@ -95,11 +100,16 @@ func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) 
 	b.multiplexers[backendKey] = m
 }
 
-func (b *backendProxyManager) removeBackend(backendKey string) {
-	logrus.Infof("Acquiring lock to remove backend %v.", backendKey)
+func (b *backendProxyManager) removeBackend(backendKey, sessionId string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	delete(b.multiplexers, backendKey)
-	logrus.Infof("Removed backend %v.", backendKey)
+	if m, ok := b.multiplexers[backendKey]; ok {
+		if m.backendSessionId == sessionId {
+			delete(b.multiplexers, backendKey)
+			logrus.Infof("Removed backend. Key: %v. Session ID %v .", backendKey, sessionId)
+		} else {
+			logrus.Infof("Not removing backend for key %v. The provided session ID %v doesn't match registered session ID %v.",
+				backendKey, sessionId, m.backendSessionId)
+		}
+	}
 }

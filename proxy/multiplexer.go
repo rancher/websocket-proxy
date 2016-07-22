@@ -12,6 +12,7 @@ import (
 )
 
 type multiplexer struct {
+	backendSessionId  string
 	backendKey        string
 	messagesToBackend chan string
 	frontendChans     map[string]chan<- common.Message
@@ -112,7 +113,7 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 }
 
 func (m *multiplexer) shutdown(stop chan<- bool) {
-	m.proxyManager.removeBackend(m.backendKey)
+	m.proxyManager.removeBackend(m.backendKey, m.backendSessionId)
 	stop <- true
 	for key := range m.frontendChans {
 		m.closeConnection(key, false)
