@@ -19,9 +19,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/backend"
-	"github.com/rancherio/websocket-proxy/common"
-	"github.com/rancherio/websocket-proxy/test_utils"
+	"github.com/rancher/websocket-proxy/backend"
+	"github.com/rancher/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/test_utils"
 )
 
 var privateKey interface{}

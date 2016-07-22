@@ -20,9 +20,9 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 
-	"github.com/rancherio/websocket-proxy/k8s"
-	"github.com/rancherio/websocket-proxy/proxy/proxyprotocol"
-	proxyTls "github.com/rancherio/websocket-proxy/proxy/tls"
+	"github.com/rancher/websocket-proxy/k8s"
+	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
+	proxyTls "github.com/rancher/websocket-proxy/proxy/tls"
 )
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
