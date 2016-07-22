@@ -6,7 +6,7 @@ import (
 	"github.com/Sirupsen/logrus"
 )
 
-func NewHttpPipe(rw http.ResponseWriter, backend backendProxy, hostKey string) (*BackendHttpReader, *BackendHttpWriter, error) {
+func NewHTTPPipe(rw http.ResponseWriter, backend backendProxy, hostKey string) (*BackendHTTPReader, *BackendHTTPWriter, error) {
 	msgKey, respChannel, err := backend.initializeClient(hostKey)
 	if err != nil {
 		return nil, nil, err
@@ -19,7 +19,7 @@ func NewHttpPipe(rw http.ResponseWriter, backend backendProxy, hostKey string) (
 		return nil, nil, err
 	}
 
-	return NewBackendHttpReader(rw, hostKey, msgKey, backend, respChannel), &BackendHttpWriter{
+	return NewBackendHTTPReader(rw, hostKey, msgKey, backend, respChannel), &BackendHTTPWriter{
 		hostKey: hostKey,
 		msgKey:  msgKey,
 		backend: backend,

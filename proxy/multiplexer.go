@@ -8,11 +8,11 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/pborman/uuid"
 
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
 type multiplexer struct {
-	backendSessionId  string
+	backendSessionID  string
 	backendKey        string
 	messagesToBackend chan string
 	frontendChans     map[string]chan<- common.Message
@@ -113,7 +113,7 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 }
 
 func (m *multiplexer) shutdown(stop chan<- bool) {
-	m.proxyManager.removeBackend(m.backendKey, m.backendSessionId)
+	m.proxyManager.removeBackend(m.backendKey, m.backendSessionID)
 	stop <- true
 	for key := range m.frontendChans {
 		m.closeConnection(key, false)

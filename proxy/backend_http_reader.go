@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
-type BackendHttpReader struct {
+type BackendHTTPReader struct {
 	backend         backendProxy
 	hostKey, msgKey string
 	messages        <-chan common.Message
@@ -18,8 +18,8 @@ type BackendHttpReader struct {
 	rw              http.ResponseWriter
 }
 
-func NewBackendHttpReader(rw http.ResponseWriter, hostKey, msgKey string, backend backendProxy, messages <-chan common.Message) *BackendHttpReader {
-	b := &BackendHttpReader{
+func NewBackendHTTPReader(rw http.ResponseWriter, hostKey, msgKey string, backend backendProxy, messages <-chan common.Message) *BackendHTTPReader {
+	b := &BackendHTTPReader{
 		hostKey:  hostKey,
 		msgKey:   msgKey,
 		messages: messages,
@@ -31,7 +31,7 @@ func NewBackendHttpReader(rw http.ResponseWriter, hostKey, msgKey string, backen
 	return b
 }
 
-func (b *BackendHttpReader) start() {
+func (b *BackendHTTPReader) start() {
 	logrus.Debugf("BACKEND READER OPEN %s", b.msgKey)
 	closed := false
 	defer close(b.data)
@@ -54,7 +54,7 @@ func (b *BackendHttpReader) start() {
 	logrus.Debugf("BACKEND READER CLOSE %s", b.msgKey)
 }
 
-func (b *BackendHttpReader) Close() error {
+func (b *BackendHTTPReader) Close() error {
 	logrus.Debugf("BACKEND CLOSE REQUESTED %s", b.msgKey)
 	b.backend.closeConnection(b.hostKey, b.msgKey)
 	for range b.data {
@@ -63,7 +63,7 @@ func (b *BackendHttpReader) Close() error {
 	return nil
 }
 
-func (b *BackendHttpReader) Read(out []byte) (int, error) {
+func (b *BackendHTTPReader) Read(out []byte) (int, error) {
 	if len(b.buffer) == 0 {
 		message, ok := <-b.data
 		if !ok {
@@ -71,7 +71,7 @@ func (b *BackendHttpReader) Read(out []byte) (int, error) {
 			return 0, io.EOF
 		}
 
-		var response common.HttpMessage
+		var response common.HTTPMessage
 		if err := json.Unmarshal([]byte(message), &response); err != nil {
 			logrus.Errorf("%s %s: %v", b.hostKey, b.msgKey, err)
 			return 0, err

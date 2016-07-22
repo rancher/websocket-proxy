@@ -9,21 +9,20 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
-// Implement this iterface and pass implementations into ConnectToProxy() to have messages
-// routed to and from the handler.
+// Handler is the iterface passed into ConnectToProxy() to have messages routed to and from the handler.
 type Handler interface {
 	Handle(messageKey string, initialMessage string, incomingMessages <-chan string, response chan<- common.Message)
 }
 
-func ConnectToProxy(proxyUrl string, handlers map[string]Handler) {
-	log.WithFields(log.Fields{"url": proxyUrl}).Info("Connecting to proxy.")
+func ConnectToProxy(proxyURL string, handlers map[string]Handler) {
+	log.WithFields(log.Fields{"url": proxyURL}).Info("Connecting to proxy.")
 
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
-	ws, _, err := dialer.Dial(proxyUrl, headers)
+	ws, _, err := dialer.Dial(proxyURL, headers)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error": err,
@@ -70,18 +69,18 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) {
 		message := common.ParseMessage(string(msg))
 		switch message.Type {
 		case common.Connect:
-			requestUrl, err := url.Parse(message.Body)
+			requestURL, err := url.Parse(message.Body)
 			if err != nil {
 				continue
 			}
 
-			handler, ok := getHandler(requestUrl.Path, handlers)
+			handler, ok := getHandler(requestURL.Path, handlers)
 			if ok {
 				msgChan := make(chan string, 10)
 				responders[message.Key] = msgChan
 				go handler.Handle(message.Key, message.Body, msgChan, responseChannel)
 			} else {
-				log.WithFields(log.Fields{"path": requestUrl.Path}).Warn("Could not find appropriate message handler for supplied path.")
+				log.WithFields(log.Fields{"path": requestURL.Path}).Warn("Could not find appropriate message handler for supplied path.")
 				responseChannel <- common.Message{
 					Key:  message.Key,
 					Type: common.Close,

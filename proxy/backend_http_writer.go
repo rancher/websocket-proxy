@@ -7,22 +7,22 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
-type BackendHttpWriter struct {
+type BackendHTTPWriter struct {
 	hostKey, msgKey string
 	backend         backendProxy
 }
 
-func (b *BackendHttpWriter) Close() error {
+func (b *BackendHTTPWriter) Close() error {
 	logrus.Debugf("BACKEND WRITE EOF %s", b.msgKey)
-	return b.writeMessage(&common.HttpMessage{
+	return b.writeMessage(&common.HTTPMessage{
 		EOF: true,
 	})
 }
 
-func (b *BackendHttpWriter) WriteRequest(req *http.Request, hijack bool, address, scheme string) error {
+func (b *BackendHTTPWriter) WriteRequest(req *http.Request, hijack bool, address, scheme string) error {
 	vars := mux.Vars(req)
 
 	url := *req.URL
@@ -40,7 +40,7 @@ func (b *BackendHttpWriter) WriteRequest(req *http.Request, hijack bool, address
 		url.Scheme = scheme
 	}
 
-	return b.writeMessage(&common.HttpMessage{
+	return b.writeMessage(&common.HTTPMessage{
 		Hijack:  hijack,
 		Host:    req.Host,
 		Method:  req.Method,
@@ -49,7 +49,7 @@ func (b *BackendHttpWriter) WriteRequest(req *http.Request, hijack bool, address
 	})
 }
 
-func (b *BackendHttpWriter) writeMessage(message *common.HttpMessage) error {
+func (b *BackendHTTPWriter) writeMessage(message *common.HTTPMessage) error {
 	data, err := json.Marshal(message)
 	if err != nil {
 		return err
@@ -59,8 +59,8 @@ func (b *BackendHttpWriter) writeMessage(message *common.HttpMessage) error {
 	return b.backend.send(b.hostKey, b.msgKey, string(data))
 }
 
-func (b *BackendHttpWriter) Write(buffer []byte) (int, error) {
-	return len(buffer), b.writeMessage(&common.HttpMessage{
+func (b *BackendHTTPWriter) Write(buffer []byte) (int, error) {
+	return len(buffer), b.writeMessage(&common.HTTPMessage{
 		Body: buffer,
 	})
 }

@@ -1,15 +1,13 @@
+
 #!/bin/bash
+set -e
 
 cd $(dirname $0)/..
 
-. ./scripts/common_functions
+if [ ! -e bin/websocket-proxy ]; then
+    ./scripts/build
+fi
 
-set_project_vars
-
-rm -rf dist
 mkdir -p dist/artifacts
-
-cd build
-echo "Packaging:"
-tar cvJf ../dist/artifacts/$PROJECT.tar.xz .
-echo Created dist/artifacts/$PROJECT.tar.xz
+cd bin/
+tar cvJf ../dist/artifacts/websocket-proxy.tar.xz .

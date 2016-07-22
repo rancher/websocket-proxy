@@ -10,18 +10,18 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 
-	"github.com/rancherio/websocket-proxy/common"
-	"github.com/rancherio/websocket-proxy/proxy"
-	"github.com/rancherio/websocket-proxy/test_utils"
+	"github.com/rancher/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/proxy"
+	"github.com/rancher/websocket-proxy/testutils"
 )
 
 var privateKey interface{}
 
 func TestMain(m *testing.M) {
 	c := getTestConfig()
-	privateKey = test_utils.ParseTestPrivateKey()
+	privateKey = testutils.ParseTestPrivateKey()
 
-	ps := &proxy.ProxyStarter{
+	ps := &proxy.Starter{
 		BackendPaths:  []string{"/v1/connectbackend"},
 		FrontendPaths: []string{"/v1/echo"},
 		Config:        c,
@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 func TestBackendGoesAway(t *testing.T) {
 	dialer := &websocket.Dialer{}
 	headers := http.Header{}
-	signedToken := test_utils.CreateBackendToken("1", privateKey)
+	signedToken := testutils.CreateBackendToken("1", privateKey)
 	url := "ws://localhost:2223/v1/connectbackend?token=" + signedToken
 	backendWs, _, err := dialer.Dial(url, headers)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestBackendGoesAway(t *testing.T) {
 	handlers["/v1/echo"] = &echoHandler{}
 	go connectToProxyWS(backendWs, handlers)
 
-	signedToken = test_utils.CreateToken("1", privateKey)
+	signedToken = testutils.CreateToken("1", privateKey)
 	url = "ws://localhost:2223/v1/echo?token=" + signedToken
 	ws := getClientConnection(url, t)
 
@@ -57,7 +57,7 @@ func TestBackendGoesAway(t *testing.T) {
 	backendWs.Close()
 
 	if _, msg, err := ws.ReadMessage(); err != io.EOF {
-		t.Fatal("Expected error indicating websocket was closed. Received: %s", string(msg))
+		t.Fatalf("Expected error indicating websocket was closed. Received: %s", msg)
 	}
 
 	dialer = &websocket.Dialer{}
@@ -71,7 +71,7 @@ func TestBackendReplaced(t *testing.T) {
 	// This tests that if a backend connection A is replaced by backend connection B and then A is closed, the
 	// multiplexer for B is not lost or removed.
 	dialer := &websocket.Dialer{}
-	url := "ws://localhost:2223/v1/connectbackend?token=" + test_utils.CreateBackendToken("1", privateKey)
+	url := "ws://localhost:2223/v1/connectbackend?token=" + testutils.CreateBackendToken("1", privateKey)
 	backendWs, _, err := dialer.Dial(url, http.Header{})
 	if err != nil {
 		t.Fatal("Failed to connect to proxy.", err)
@@ -87,14 +87,14 @@ func TestBackendReplaced(t *testing.T) {
 
 	backendWs.Close()
 
-	ws := getClientConnection("ws://localhost:2223/v1/echo?token="+test_utils.CreateToken("1", privateKey), t)
+	ws := getClientConnection("ws://localhost:2223/v1/echo?token="+testutils.CreateToken("1", privateKey), t)
 	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
 		t.Fatal(err)
 	}
 
 	_, msg, err := ws.ReadMessage()
 	if err != nil {
-		t.Fatal("Unexpected error: %v", string(msg))
+		t.Fatalf("Unexpected error: %s", msg)
 	}
 
 	if string(msg) != "a message-response" {
@@ -186,7 +186,7 @@ func getTestConfig() *proxy.Config {
 		ListenAddr: "127.0.0.1:2223",
 	}
 
-	pubKey, err := proxy.ParsePublicKey("../test_utils/public.pem")
+	pubKey, err := proxy.ParsePublicKey("../testutils/public.pem")
 	if err != nil {
 		log.Fatal("Failed to parse key. ", err)
 	}

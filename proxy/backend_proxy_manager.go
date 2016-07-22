@@ -7,7 +7,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/websocket"
 	"github.com/pborman/uuid"
-	"github.com/rancherio/websocket-proxy/common"
+	"github.com/rancher/websocket-proxy/common"
 )
 
 type backendProxy interface {
@@ -20,7 +20,7 @@ type backendProxy interface {
 
 type proxyManager interface {
 	addBackend(backendKey string, ws *websocket.Conn)
-	removeBackend(backendKey, sessionId string)
+	removeBackend(backendKey, sessionID string)
 }
 
 type backendProxyManager struct {
@@ -80,13 +80,13 @@ func (b *backendProxyManager) hasBackend(backendKey string) bool {
 }
 
 func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) {
-	sessionId := uuid.New()
-	logrus.Infof("Registering backend for host %v with session ID %v.", backendKey, sessionId)
+	sessionID := uuid.New()
+	logrus.Infof("Registering backend for host %v with session ID %v.", backendKey, sessionID)
 
 	msgs := make(chan string, 10)
 	clients := make(map[string]chan<- common.Message)
 	m := &multiplexer{
-		backendSessionId:  sessionId,
+		backendSessionID:  sessionID,
 		backendKey:        backendKey,
 		messagesToBackend: msgs,
 		frontendChans:     clients,
@@ -100,16 +100,16 @@ func (b *backendProxyManager) addBackend(backendKey string, ws *websocket.Conn) 
 	b.multiplexers[backendKey] = m
 }
 
-func (b *backendProxyManager) removeBackend(backendKey, sessionId string) {
+func (b *backendProxyManager) removeBackend(backendKey, sessionID string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if m, ok := b.multiplexers[backendKey]; ok {
-		if m.backendSessionId == sessionId {
+		if m.backendSessionID == sessionID {
 			delete(b.multiplexers, backendKey)
-			logrus.Infof("Removed backend. Key: %v. Session ID %v .", backendKey, sessionId)
+			logrus.Infof("Removed backend. Key: %v. Session ID %v .", backendKey, sessionID)
 		} else {
 			logrus.Infof("Not removing backend for key %v. The provided session ID %v doesn't match registered session ID %v.",
-				backendKey, sessionId, m.backendSessionId)
+				backendKey, sessionID, m.backendSessionID)
 		}
 	}
 }
