@@ -13,6 +13,7 @@ type BackendHandler struct {
 }
 
 func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	log.Infof("Handling backend connection request.")
 	hostKey, authed := h.auth(req)
 	if !authed {
 		http.Error(rw, "Failed authentication", 401)
@@ -30,24 +31,25 @@ func (h *BackendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Infof("Registering backend for host [%v]", hostKey)
 	h.proxyManager.addBackend(hostKey, ws)
 }
 
 func (h *BackendHandler) auth(req *http.Request) (string, bool) {
-	token, err := parseToken(req, h.parsedPublicKey)
+	token, tokenParam, err := parseToken(req, h.parsedPublicKey)
 	if err != nil {
-		log.WithFields(log.Fields{"error": err}).Error("Error parsing token.")
+		log.Warnf("Error parsing backend token: %v. Failing auth. Token parameter: %v", err, tokenParam)
 		return "", false
 	}
 
 	reportedUuid, found := token.Claims["reportedUuid"]
 	if !found {
+		log.Warnf("Token did not have a reportedUuid. Failing auth. Token parameter: %v", tokenParam)
 		return "", false
 	}
 
 	hostKey, ok := reportedUuid.(string)
 	if !ok || hostKey == "" {
+		log.Warnf("Token's reported uuid claim %v could not be parsed as a string. Token parameter: %v", reportedUuid, tokenParam)
 		return "", false
 	}
 

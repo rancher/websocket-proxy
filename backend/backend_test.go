@@ -67,6 +67,41 @@ func TestBackendGoesAway(t *testing.T) {
 	}
 }
 
+func TestBackendReplaced(t *testing.T) {
+	// This tests that if a backend connection A is replaced by backend connection B and then A is closed, the
+	// multiplexer for B is not lost or removed.
+	dialer := &websocket.Dialer{}
+	url := "ws://localhost:2223/v1/connectbackend?token=" + test_utils.CreateBackendToken("1", privateKey)
+	backendWs, _, err := dialer.Dial(url, http.Header{})
+	if err != nil {
+		t.Fatal("Failed to connect to proxy.", err)
+	}
+
+	backendWs2, _, err := dialer.Dial(url, http.Header{})
+	if err != nil {
+		t.Fatal("Failed to connect to proxy second time.", err)
+	}
+	defer backendWs2.Close()
+
+	go connectToProxyWS(backendWs2, map[string]Handler{"/v1/echo": &echoHandler{}})
+
+	backendWs.Close()
+
+	ws := getClientConnection("ws://localhost:2223/v1/echo?token="+test_utils.CreateToken("1", privateKey), t)
+	if err := ws.WriteMessage(1, []byte("a message")); err != nil {
+		t.Fatal(err)
+	}
+
+	_, msg, err := ws.ReadMessage()
+	if err != nil {
+		t.Fatal("Unexpected error: %v", string(msg))
+	}
+
+	if string(msg) != "a message-response" {
+		t.Fatalf("Unexpected message: %s", msg)
+	}
+}
+
 // Simple unit test for asserting the GetHandler algorithm
 func TestGetHandler(t *testing.T) {
 	handlers := map[string]Handler{}
