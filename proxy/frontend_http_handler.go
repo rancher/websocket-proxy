@@ -113,9 +113,11 @@ func (h *FrontendHTTPHandler) shouldHijack(req *http.Request) bool {
 }
 
 func (h *FrontendHTTPHandler) authAndLookup(req *http.Request) (*jwt.Token, string, bool, error) {
-	token, hostKey, ok := h.FrontendHandler.auth(req)
-	if ok {
-		return token, hostKey, ok, nil
+	token, hostKey, authErr := h.FrontendHandler.auth(req)
+	if authErr == nil {
+		return token, hostKey, true, nil
+	} else if !IsNoTokenError(authErr) {
+		log.Infof("Frontend auth failed: %v. Getting new token.", authErr)
 	}
 
 	tokenString, err := h.TokenLookup.Lookup(req)

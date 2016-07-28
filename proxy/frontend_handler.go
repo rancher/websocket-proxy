@@ -23,8 +23,9 @@ type FrontendHandler struct {
 }
 
 func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	_, hostKey, authed := h.auth(req)
-	if !authed {
+	_, hostKey, authErr := h.auth(req)
+	if authErr != nil {
+		log.Infof("Frontend auth failed: %v", authErr)
 		http.Error(rw, "Failed authentication", 401)
 		return
 	}
@@ -113,26 +114,27 @@ func (h *FrontendHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, bool) {
+func (h *FrontendHandler) auth(req *http.Request) (*jwt.Token, string, error) {
 	token, tokenParam, err := parseToken(req, h.parsedPublicKey)
 	if err != nil {
-		log.Warnf("Error parsing frontend token: %v. Failing auth. Token parameter: %v", err, tokenParam)
-		return nil, "", false
+		if tokenParam == "" {
+			return nil, "", noTokenError{}
+		}
+		return nil, "", fmt.Errorf("Error parsing token: %v. Token parameter: %v", err, tokenParam)
 	}
 
 	if !token.Valid {
-		log.Warnf("Token not valid. Failing auth. Token parameter: %v.", tokenParam)
-		return nil, "", false
+		return nil, "", fmt.Errorf("Token not valid. Token parameter: %v.", tokenParam)
 	}
 
 	hostUUID, found := token.Claims["hostUuid"]
 	if found {
 		if hostKey, ok := hostUUID.(string); ok && h.backend.hasBackend(hostKey) {
-			return token, hostKey, true
+			return token, hostKey, nil
 		}
 	}
-	log.Warnf("Invalid backend host requested: %v.", hostUUID)
-	return nil, "", false
+
+	return nil, "", fmt.Errorf("Invalid backend host requested: %v.", hostUUID)
 }
 
 func closeConnection(ws *websocket.Conn) {
@@ -160,4 +162,16 @@ func parseToken(req *http.Request, parsedPublicKey interface{}) (*jwt.Token, str
 		return parsedPublicKey, nil
 	})
 	return token, tokenString, err
+}
+
+type noTokenError struct {
+}
+
+func (e noTokenError) Error() string {
+	return "Request did not have a token parameter."
+}
+
+func IsNoTokenError(err error) bool {
+	_, ok := err.(noTokenError)
+	return ok
 }

@@ -54,8 +54,9 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		multiHost = true
 	}
 
-	statsInfoStructs, authed := h.auth(req, multiHost)
-	if !authed {
+	statsInfoStructs, authErr := h.auth(req, multiHost)
+	if authErr != nil {
+		log.Infof("Stats auth failed: %v", authErr)
 		http.Error(rw, "Failed authentication", 401)
 		return
 	}
@@ -127,16 +128,15 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bool) {
+func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, error) {
 	tokenString := req.URL.Query().Get("token")
 	token, err := parseRequestToken(tokenString, h.parsedPublicKey)
 	if err != nil {
-		log.Errorf("Error parsing stats token. Failing auth. Error: %v", err)
-		return nil, false
+		return nil, fmt.Errorf("Error parsing stats token. Failing auth. Error: %v", err)
 	}
 
 	if !token.Valid {
-		return nil, false
+		return nil, fmt.Errorf("Token not valid.")
 	}
 
 	var statsInfoStructs []*statsInfo
@@ -144,29 +144,26 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 	if multiHost {
 		projectsOrServices, err := getProjectOrService(token)
 		if err != nil {
-			log.Errorf("Error getting project or service info from token %v.", token)
-			return nil, false
+			return nil, fmt.Errorf("Error getting project or service info from token %v.", token)
 		}
 		for _, projectOrService := range projectsOrServices {
 			data := projectOrService
 			innerTokenString, ok := data["token"]
 			if !ok {
-				log.Error("Empty set of hosts or containers in project/service")
-				return nil, false
+				return nil, fmt.Errorf("Empty set of hosts or containers in project/service")
 			}
 			innerJwtToken, err := parseRequestToken(innerTokenString, h.parsedPublicKey)
 			if err != nil {
-				log.Errorf("Error getting inner token: %v. Inner token parameter: %v.", err, innerTokenString)
-				return nil, false
+
+				return nil, fmt.Errorf("Error getting inner token: %v. Inner token parameter: %v.", err, innerTokenString)
 			}
 			hostUUID, found := h.extractHostUUID(innerJwtToken)
 			if !found {
-				return nil, false
+				return nil, fmt.Errorf("Couldn't find host uuid on inner token.")
 			}
 			urlString, ok := data["url"]
 			if !ok {
-				log.Errorf("Could't find url field in inner token %v.", data)
-				return nil, false
+				return nil, fmt.Errorf("Could't find url field in inner token %v.", data)
 			}
 			urlString = urlString + "?token=" + innerTokenString
 			statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUUID, url: urlString})
@@ -174,12 +171,11 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, bo
 	} else {
 		hostUUID, found := h.extractHostUUID(token)
 		if !found {
-			log.Error("could not find host uuid")
-			return nil, false
+			return nil, fmt.Errorf("could not find host uuid")
 		}
 		statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUUID, url: req.URL.String()})
 	}
-	return statsInfoStructs, true
+	return statsInfoStructs, nil
 }
 
 func getProjectOrService(token *jwt.Token) ([]map[string]string, error) {
