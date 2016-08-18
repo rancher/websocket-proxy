@@ -56,7 +56,7 @@ func (b *BackendHTTPReader) start() {
 
 func (b *BackendHTTPReader) Close() error {
 	logrus.Debugf("BACKEND CLOSE REQUESTED %s", b.msgKey)
-	b.backend.closeConnection(b.hostKey, b.msgKey)
+	go b.backend.closeConnection(b.hostKey, b.msgKey)
 	for range b.data {
 		// Make sure the start() go routine is closed
 	}
