@@ -48,7 +48,7 @@ func (t *TokenLookup) Lookup(r *http.Request) (string, error) {
 
 	token, err := t.callRancher(r)
 	if err != nil {
-		return "", nil
+		return "", err
 	}
 
 	if token != "" {
