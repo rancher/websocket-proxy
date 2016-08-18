@@ -76,13 +76,24 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 
 			m.frontendMu.RLock()
 			frontendChan, ok := m.frontendChans[message.Key]
+			timedOut := false
 			if ok {
-				frontendChan <- message
+				select {
+				case frontendChan <- message:
+				case <-time.After(time.Second * 10):
+					timedOut = true
+				}
 			}
 			m.frontendMu.RUnlock()
 
+			if timedOut {
+				log.Warnf("Timed out sending message with key %v to frontend channel.", message.Key)
+				m.proxyManager.closeConnection(m.backendKey, message.Key)
+			}
+
 			if !ok && message.Type != common.Close {
-				m.sendClose(message.Key)
+				log.Infof("Couldn't find frontend channel for key %v. Closing frontend connection.", m.backendKey)
+				m.proxyManager.closeConnection(m.backendKey, message.Key)
 			}
 		}
 	}(stopSignal)
@@ -97,11 +108,12 @@ func (m *multiplexer) routeMessages(ws *websocket.Conn) {
 				if !ok {
 					return
 				}
+				ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
 				err := ws.WriteMessage(websocket.TextMessage, []byte(message))
 				if err != nil {
-					log.WithFields(log.Fields{"error": err, "msg": message}).Error("Could not write message.")
+					log.Errorf("Error writing message to backend %v - %v. Error: %v", m.backendKey, m.backendSessionID, err)
+					ws.Close()
 				}
-
 			case <-ticker.C:
 				ws.WriteControl(websocket.PingMessage, []byte(""), time.Now().Add(time.Second))
 
