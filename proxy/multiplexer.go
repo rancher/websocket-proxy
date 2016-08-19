@@ -46,13 +46,11 @@ func (m *multiplexer) closeConnection(msgKey string, notifyBackend bool) {
 		m.sendClose(msgKey)
 	}
 
+	m.frontendMu.Lock()
+	defer m.frontendMu.Unlock()
 	if frontendChan, ok := m.frontendChans[msgKey]; ok {
-		m.frontendMu.Lock()
-		defer m.frontendMu.Unlock()
-		if _, stillThere := m.frontendChans[msgKey]; stillThere {
-			close(frontendChan)
-			delete(m.frontendChans, msgKey)
-		}
+		close(frontendChan)
+		delete(m.frontendChans, msgKey)
 	}
 }
 
