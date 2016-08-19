@@ -8,14 +8,24 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/gorilla/mux"
 	"github.com/rancher/websocket-proxy/common"
+	"sync"
 )
 
 type BackendHTTPWriter struct {
 	hostKey, msgKey string
 	backend         backendProxy
+	mu              sync.Mutex
+	closed          bool
 }
 
 func (b *BackendHTTPWriter) Close() error {
+	b.mu.Lock()
+	if b.closed {
+		return nil
+	}
+	b.closed = true
+	b.mu.Unlock()
+
 	logrus.Debugf("BACKEND WRITE EOF %s", b.msgKey)
 	return b.writeMessage(&common.HTTPMessage{
 		EOF: true,
