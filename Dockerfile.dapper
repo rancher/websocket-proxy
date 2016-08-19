@@ -7,7 +7,7 @@ RUN apt-get update && \
     apt-get install -y xz-utils
 ENV PATH /go/bin:$PATH
 ENV DAPPER_SOURCE /go/src/github.com/rancher/websocket-proxy
-ENV DAPPER_OUTPUT bin
+ENV DAPPER_OUTPUT bin dist
 ENV DAPPER_DOCKER_SOCKET true
 ENV DAPPER_ENV TAG REPO
 ENV GO15VENDOREXPERIMENT 1
