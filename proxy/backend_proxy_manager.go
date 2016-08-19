@@ -21,6 +21,7 @@ type backendProxy interface {
 type proxyManager interface {
 	addBackend(backendKey string, ws *websocket.Conn)
 	removeBackend(backendKey, sessionID string)
+	closeConnection(backendKey, msgKey string) error
 }
 
 type backendProxyManager struct {
