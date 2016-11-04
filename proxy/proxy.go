@@ -185,12 +185,12 @@ func (s *Starter) setupTLS() (*tls.Config, error) {
 		return nil, err
 	}
 
-	tlsConfig := tlsconfig.ServerDefault
+	tlsConfig := tlsconfig.ServerDefault()
 	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	tlsConfig.ClientCAs = clientCas
 	tlsConfig.Certificates = []tls.Certificate{tlsCert}
 
-	return &tlsConfig, nil
+	return tlsConfig, nil
 }
 
 type pathCleaner struct {
