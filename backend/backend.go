@@ -10,7 +10,6 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/rancher/websocket-proxy/common"
-	"io"
 )
 
 // Handler is the iterface passed into ConnectToProxy() to have messages routed to and from the handler.
@@ -46,7 +45,7 @@ func connectToProxyWS(ws *websocket.Conn, handlers map[string]Handler) error {
 			select {
 			case message, ok := <-responseChannel:
 				if !ok {
-					return io.EOF
+					return
 				}
 				data := common.FormatMessage(message.Key, message.Type, message.Body)
 				ws.WriteMessage(1, []byte(data))
