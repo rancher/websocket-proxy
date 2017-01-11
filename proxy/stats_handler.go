@@ -56,7 +56,6 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	statsInfoStructs, authErr := h.auth(req, multiHost)
 	if authErr != nil {
-		log.Infof("Stats auth failed: %v", authErr)
 		http.Error(rw, "Failed authentication", 401)
 		return
 	}
