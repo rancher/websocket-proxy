@@ -135,7 +135,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, er
 	}
 
 	if !token.Valid {
-		return nil, fmt.Errorf("Token not valid.")
+		return nil, fmt.Errorf("Token not valid")
 	}
 
 	var statsInfoStructs []*statsInfo
@@ -143,7 +143,7 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, er
 	if multiHost {
 		projectsOrServices, err := getProjectOrService(token)
 		if err != nil {
-			return nil, fmt.Errorf("Error getting project or service info from token %v.", token)
+			return nil, fmt.Errorf("Error getting project or service info from token %v", token)
 		}
 		for _, projectOrService := range projectsOrServices {
 			data := projectOrService
@@ -154,15 +154,15 @@ func (h *StatsHandler) auth(req *http.Request, multiHost bool) ([]*statsInfo, er
 			innerJwtToken, err := parseRequestToken(innerTokenString, h.parsedPublicKey)
 			if err != nil {
 
-				return nil, fmt.Errorf("Error getting inner token: %v. Inner token parameter: %v.", err, innerTokenString)
+				return nil, fmt.Errorf("Error getting inner token: %v. Inner token parameter: %v", err, innerTokenString)
 			}
 			hostUUID, found := h.extractHostUUID(innerJwtToken)
 			if !found {
-				return nil, fmt.Errorf("Couldn't find host uuid on inner token.")
+				return nil, fmt.Errorf("Couldn't find host uuid on inner token")
 			}
 			urlString, ok := data["url"]
 			if !ok {
-				return nil, fmt.Errorf("Could't find url field in inner token %v.", data)
+				return nil, fmt.Errorf("Could't find url field in inner token %v", data)
 			}
 			urlString = urlString + "?token=" + innerTokenString
 			statsInfoStructs = append(statsInfoStructs, &statsInfo{hostKey: hostUUID, url: urlString})
