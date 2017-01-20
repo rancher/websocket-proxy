@@ -30,6 +30,7 @@ type Config struct {
 	CattleAccessKey      string
 	CattleSecretKey      string
 	TLSListenAddr        string
+	MasterFile           string
 }
 
 func GetConfig() (*Config, error) {
@@ -40,6 +41,7 @@ func GetConfig() (*Config, error) {
 	var keyFile string
 	var keyContents string
 	var proxyProtoHTTPSPorts string
+	flag.StringVar(&c.MasterFile, "master-file", "", "Location of the file containing the master address.")
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
 	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
 	flag.StringVar(&c.ListenAddr, "listen-address", ":8080", "The tcp address to listen on.")
