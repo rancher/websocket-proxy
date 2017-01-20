@@ -38,35 +38,37 @@ type Starter struct {
 }
 
 func (s *Starter) StartProxy() error {
+	switcher := NewSwitcher(s.Config)
+
 	backendMultiplexers := make(map[string]*multiplexer)
 	bpm := &backendProxyManager{
 		multiplexers: backendMultiplexers,
 		mu:           &sync.RWMutex{},
 	}
 
-	frontendHandler := &FrontendHandler{
+	frontendHandler := switcher.Wrap(&FrontendHandler{
 		backend:         bpm,
 		parsedPublicKey: s.Config.PublicKey,
-	}
+	})
 
-	statsHandler := &StatsHandler{
+	statsHandler := switcher.Wrap(&StatsHandler{
 		backend:         bpm,
 		parsedPublicKey: s.Config.PublicKey,
-	}
+	})
 
-	backendHandler := &BackendHandler{
+	backendHandler := switcher.Wrap(&BackendHandler{
 		proxyManager:    bpm,
 		parsedPublicKey: s.Config.PublicKey,
-	}
+	})
 
-	frontendHTTPHandler := &FrontendHTTPHandler{
+	frontendHTTPHandler := switcher.Wrap(&FrontendHTTPHandler{
 		FrontendHandler: FrontendHandler{
 			backend:         bpm,
 			parsedPublicKey: s.Config.PublicKey,
 		},
 		HTTPSPorts:  s.Config.ProxyProtoHTTPSPorts,
 		TokenLookup: NewTokenLookup(s.Config.CattleAddr),
-	}
+	})
 
 	cattleProxy, cattleWsProxy := newCattleProxies(s.Config)
 
