@@ -10,7 +10,6 @@ import (
 	"net/http/httputil"
 	"os"
 	"regexp"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -251,7 +250,7 @@ type cattleWSProxy struct {
 }
 
 func (h *cattleWSProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+	if len(req.Header.Get("Upgrade")) > 0 {
 		proxyprotocol.AddHeaders(req, h.reverseProxy.httpsPorts)
 		h.serveWebsocket(rw, req)
 	} else {
