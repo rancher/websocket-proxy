@@ -31,6 +31,7 @@ type Config struct {
 	CattleSecretKey      string
 	TLSListenAddr        string
 	MasterFile           string
+	APIFilterConfigFile  string
 }
 
 func GetConfig() (*Config, error) {
@@ -41,6 +42,8 @@ func GetConfig() (*Config, error) {
 	var keyFile string
 	var keyContents string
 	var proxyProtoHTTPSPorts string
+	var apiFilterConfigFile string
+
 	flag.StringVar(&c.MasterFile, "master-file", "", "Location of the file containing the master address.")
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
 	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
@@ -49,6 +52,7 @@ func GetConfig() (*Config, error) {
 	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
 	flag.IntVar(&c.ParentPid, "parent-pid", 0, "If provided, this process will exit when the specified parent process stops running.")
 	flag.StringVar(&proxyProtoHTTPSPorts, "https-proxy-protocol-ports", "", "If proxy protocol is used, a list of proxy ports that will allow us to recognize that the connection was over https.")
+	flag.StringVar(&apiFilterConfigFile, "api-filter-config-file", "", "Location of the config.json that defines the API filters.")
 
 	confOptions := &globalconf.Options{
 		EnvPrefix: "PROXY_",
@@ -94,6 +98,7 @@ func GetConfig() (*Config, error) {
 		}
 	}
 	c.ProxyProtoHTTPSPorts = portMap
+	c.APIFilterConfigFile = apiFilterConfigFile
 
 	return c, nil
 }
