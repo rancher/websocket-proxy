@@ -22,15 +22,16 @@ import (
 )
 
 type Config struct {
-	PublicKey            interface{}
-	ListenAddr           string
-	CattleAddr           string
-	ParentPid            int
-	ProxyProtoHTTPSPorts map[int]bool
-	CattleAccessKey      string
-	CattleSecretKey      string
-	TLSListenAddr        string
-	MasterFile           string
+	PublicKey                interface{}
+	ListenAddr               string
+	CattleAddr               string
+	ParentPid                int
+	ProxyProtoHTTPSPorts     map[int]bool
+	CattleAccessKey          string
+	CattleSecretKey          string
+	TLSListenAddr            string
+	MasterFile               string
+	APIInterceptorConfigFile string
 }
 
 func GetConfig() (*Config, error) {
@@ -41,6 +42,8 @@ func GetConfig() (*Config, error) {
 	var keyFile string
 	var keyContents string
 	var proxyProtoHTTPSPorts string
+	var apiInterceptorConfigFile string
+
 	flag.StringVar(&c.MasterFile, "master-file", "", "Location of the file containing the master address.")
 	flag.StringVar(&keyFile, "jwt-public-key-file", "", "Location of the public-key used to validate JWTs.")
 	flag.StringVar(&keyContents, "jwt-public-key-contents", "", "An alternative to jwt-public-key-file. The contents of the key.")
@@ -49,6 +52,7 @@ func GetConfig() (*Config, error) {
 	flag.StringVar(&c.CattleAddr, "cattle-address", "", "The tcp address to forward cattle API requests to. Will not proxy to cattle api if this option is not provied.")
 	flag.IntVar(&c.ParentPid, "parent-pid", 0, "If provided, this process will exit when the specified parent process stops running.")
 	flag.StringVar(&proxyProtoHTTPSPorts, "https-proxy-protocol-ports", "", "If proxy protocol is used, a list of proxy ports that will allow us to recognize that the connection was over https.")
+	flag.StringVar(&apiInterceptorConfigFile, "api-interceptor-config-file", "", "Location of the config.json that defines the API interceptors.")
 
 	confOptions := &globalconf.Options{
 		EnvPrefix: "PROXY_",
@@ -94,6 +98,7 @@ func GetConfig() (*Config, error) {
 		}
 	}
 	c.ProxyProtoHTTPSPorts = portMap
+	c.APIInterceptorConfigFile = apiInterceptorConfigFile
 
 	return c, nil
 }

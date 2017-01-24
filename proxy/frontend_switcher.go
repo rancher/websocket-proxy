@@ -82,7 +82,7 @@ func (s *Switcher) readConfig() error {
 	s.Lock()
 	logrus.Infof("Master address: %s", newAddr)
 	s.addr = newAddr
-	_, s.remote = newCattleProxies(&Config{
+	s.remote = newWSProxy(&Config{
 		CattleAddr: newAddr,
 	})
 	s.Unlock()
