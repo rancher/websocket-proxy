@@ -3,11 +3,13 @@ package auth
 import (
 	"encoding/json"
 	"errors"
-	log "github.com/Sirupsen/logrus"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
+
+	log "github.com/Sirupsen/logrus"
 
 	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/filters"
 	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/model"
@@ -59,12 +61,16 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 	log.Debugf("Request => %v", input)
 
 	var cookie []string
+	if input.Headers["Cookie"] == nil {
+		output.Status = http.StatusOK
+		return output, fmt.Errorf("No Cookie found.")
+
+	}
 	if len(input.Headers["Cookie"]) >= 1 {
 		cookie = input.Headers["Cookie"]
 	} else {
-		log.Debugf("No Cookie found.")
 		output.Status = http.StatusOK
-		return output, nil
+		return output, fmt.Errorf("No Cookie found.")
 	}
 	var cookieString string
 	if len(cookie) >= 1 {
@@ -74,9 +80,8 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 			}
 		}
 	} else {
-		log.Debugf("No token found in cookie.")
 		output.Status = http.StatusOK
-		return output, nil
+		return output, fmt.Errorf("No token found in cookie.")
 	}
 
 	tokens := strings.Split(cookieString, ";")
@@ -91,14 +96,12 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 
 		}
 	} else {
-		log.Errorf("No token found")
 		output.Status = http.StatusOK
-		return output, nil
+		return output, fmt.Errorf("No token found")
 	}
 	if tokenValue == "" {
-		log.Errorf("No token found")
 		output.Status = http.StatusOK
-		return output, nil
+		return output, fmt.Errorf("No token found")
 	}
 
 	//check if the token value is empty or not
@@ -109,34 +112,31 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		var err error
 		if envid != "" {
 			projectID, accountID, err = getAccountAndProject(f.rancherURL, envid, tokenValue)
+			if err != nil {
+				output.Status = http.StatusNotFound
+				return output, fmt.Errorf("Error getting the accountid and projectid: %v", err)
+			}
 			if accountID == "Unauthorized" {
-				log.Errorf("Unauthorized")
 				output.Status = http.StatusUnauthorized
-				return output, nil
+				return output, fmt.Errorf("Token is expired or unauthorized")
 			}
 
-			if accountID == "Forbidden" {
-				log.Errorf("Forbidden")
+			if accountID == "" {
 				output.Status = http.StatusForbidden
-				return output, nil
+				return output, fmt.Errorf("Token is forbidden to access the projectid.")
 			}
-			if err != nil {
-				log.Errorf("Error getting the accountid and projectid: %v", err)
-				output.Status = http.StatusNotFound
-				return output, nil
-			}
+
 		} else {
 			accountID, err = getAccountID(f.rancherURL, tokenValue)
-			if accountID == "Unauthorized" {
-				log.Errorf("Unauthorized")
-				output.Status = http.StatusUnauthorized
-				return output, nil
-			}
 			if err != nil {
-				log.Errorf("Error getting the accountid : %v", err)
 				output.Status = http.StatusNotFound
-				return output, nil
+				return output, fmt.Errorf("Error getting the accountid : %v", err)
 			}
+			if accountID == "Unauthorized" {
+				output.Status = http.StatusUnauthorized
+				return output, fmt.Errorf("Token is expired or unauthorized")
+			}
+
 		}
 
 		//construct the responseBody
@@ -168,46 +168,35 @@ func getAccountAndProject(host string, envid string, token string) (string, stri
 	log.Debugf("requestURL %v", requestURL)
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
-		log.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
-		return "", "", err
+		return "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
 	}
 	cookie := http.Cookie{Name: "token", Value: token}
 	req.AddCookie(&cookie)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
-		return "", "", err
+		return "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
 	}
 	bodyText, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Errorf("Cannot read the reponse body")
-		return "", "", err
+		return "", "", fmt.Errorf("Cannot read the reponse body")
 	}
-	authMessage := AuthorizeData{}
-	err = json.Unmarshal(bodyText, &authMessage)
+
+	err = checkIfAuthorized(bodyText)
+
 	if err != nil {
-		log.Errorf("Cannot extract authorization JSON")
-		return "", "", err
-	}
-	if authMessage.Message == "Unauthorized" {
-		log.Errorf("Unauthorized token")
-		err := errors.New("Unauthorized token")
 		return "Unauthorized", "Unauthorized", err
 	}
 
 	projectid := resp.Header.Get("X-Api-Account-Id")
 	userid := resp.Header.Get("X-Api-User-Id")
 	if projectid == "" || userid == "" {
-		log.Errorf("Cannot get projectid or userid")
-		err := errors.New("Forbidden")
+		err := errors.New("Token is forbidden to access the projectid.")
 		return "Forbidden", "Forbidden", err
 
 	}
 	if projectid == userid {
-		log.Errorf("Cannot validate project id")
 		err := errors.New("Cannot validate project id")
 		return "", "", err
-
 	}
 
 	log.Debugf("projectid: %v, userid: %v", projectid, userid)
@@ -221,30 +210,28 @@ func getAccountID(host string, token string) (string, error) {
 	client := &http.Client{}
 	requestURL := host + "/v2-beta/accounts"
 	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("Cannot get the account api [%v]", err)
+	}
 	cookie := http.Cookie{Name: "token", Value: token}
 	req.AddCookie(&cookie)
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
-		return "", err
+		return "", fmt.Errorf("Cannot setup HTTP client [%v]", err)
 	}
 	bodyText, err := ioutil.ReadAll(resp.Body)
-	authMessage := AuthorizeData{}
-	err = json.Unmarshal(bodyText, &authMessage)
-	log.Debugf("bodyText %v", string(bodyText))
 	if err != nil {
-		log.Errorf("Unmarshal token fail")
-		return "", err
+		return "", fmt.Errorf("Cannot read data from response body:[%v]", err)
 	}
-	if authMessage.Message == "Unauthorized" {
-		log.Errorf("Unauthorized token")
-		err := errors.New("Unauthorized token")
+	err = checkIfAuthorized(bodyText)
+
+	if err != nil {
 		return "Unauthorized", err
 	}
+
 	messageData := MessageData{}
 	err = json.Unmarshal(bodyText, &messageData)
 	if err != nil {
-		log.Errorf("Cannot extract accounts JSON")
 		err := errors.New("Cannot extract accounts JSON")
 		return "", err
 	}
@@ -254,7 +241,13 @@ func getAccountID(host string, token string) (string, error) {
 
 		idData, suc := messageData.Data[i].(map[string]interface{})
 		if suc {
+			if idData["id"] == "" || idData["id"] == nil {
+				return "", fmt.Errorf("Cannot extract user id.")
+			}
 			id, suc := idData["id"].(string)
+			if idData["kind"] == "" || idData["kind"] == nil {
+				return "", fmt.Errorf("Cannot extract user kind.")
+			}
 			kind, namesuc := idData["kind"].(string)
 			if suc && namesuc {
 				//if the token belongs to admin, only return the admin token
@@ -262,8 +255,7 @@ func getAccountID(host string, token string) (string, error) {
 					return id, nil
 				}
 			} else {
-				log.Errorf("Cannot extract accounts JSON")
-				err := errors.New("Cannot extract accounts JSON")
+				err := errors.New("Cannot extract accounts from account api")
 				return "", err
 			}
 			result = id
@@ -274,4 +266,19 @@ func getAccountID(host string, token string) (string, error) {
 
 	return result, nil
 
+}
+
+//check the AuthorizeData
+func checkIfAuthorized(bodyText []byte) error {
+
+	authMessage := AuthorizeData{}
+	err := json.Unmarshal(bodyText, &authMessage)
+	if err != nil {
+		return fmt.Errorf("Cannot read the reponse body")
+	}
+	if authMessage.Message == "Unauthorized" {
+		err = errors.New("Token is expired or unauthorized")
+		return err
+	}
+	return nil
 }
