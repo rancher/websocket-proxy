@@ -55,7 +55,7 @@ func SetConfig(filterConfigFile string, cattleAddr string) {
 
 	CattleURL = "http://" + cattleAddr
 	if len(CattleURL) == 0 {
-		log.Warnf("No CattleAddrset to forward the requests to Cattle")
+		log.Warnf("No CattleAddr set to forward the requests to Cattle")
 		APIFilterProxyReady = false
 		return
 	}
@@ -64,19 +64,18 @@ func SetConfig(filterConfigFile string, cattleAddr string) {
 	refChan := make(chan int, 1)
 	refreshReqChannel = &refChan
 
-	if configFile != "" {
-		ConfigFields = ConfigFileFields{}
-		PathPreFilters = make(map[string][]model.FilterData)
-		PathDestinations = make(map[string]Destination)
-		err := Reload()
-		if err != nil {
-			log.Warnf("Failed to load the API filter proxy config: %v", err)
-			APIFilterProxyReady = false
-			return
-		}
+	ConfigFields = ConfigFileFields{}
+	PathPreFilters = make(map[string][]model.FilterData)
+	PathDestinations = make(map[string]Destination)
+	err := Reload()
+	if err != nil {
+		log.Warnf("Disabling API filter proxy, failed to load the API filter proxy config with error: %v", err)
+		APIFilterProxyReady = false
+		return
 	}
 
 	APIFilterProxyReady = true
+	log.Infof("Configured the API filter proxy with config %v", filterConfigFile)
 }
 
 func Reload() error {
@@ -86,14 +85,14 @@ func Reload() error {
 		if configFile != "" {
 			configContent, err := ioutil.ReadFile(configFile)
 			if err != nil {
-				log.Errorf("Error reading config.json file at path %v", configFile)
+				log.Debugf("Error reading config.json file at path %v", configFile)
 				<-*refreshReqChannel
 				return fmt.Errorf("Error reading config.json file at path %v", configFile)
 			}
 			updatedConfigFields := ConfigFileFields{}
 			err = json.Unmarshal(configContent, &updatedConfigFields)
 			if err != nil {
-				log.Errorf("config.json data format invalid, error : %v\n", err)
+				log.Debugf("config.json data format invalid, error : %v\n", err)
 				<-*refreshReqChannel
 				return fmt.Errorf("Proxy config.json data format invalid, error : %v", err)
 			}

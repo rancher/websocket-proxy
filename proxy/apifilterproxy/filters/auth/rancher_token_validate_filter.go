@@ -63,14 +63,16 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 	var cookie []string
 	if input.Headers["Cookie"] == nil {
 		output.Status = http.StatusOK
-		return output, fmt.Errorf("No Cookie found.")
+		log.Debug("No Cookie found in request")
+		return output, nil
 
 	}
 	if len(input.Headers["Cookie"]) >= 1 {
 		cookie = input.Headers["Cookie"]
 	} else {
 		output.Status = http.StatusOK
-		return output, fmt.Errorf("No Cookie found.")
+		log.Debug("No Cookie found in request")
+		return output, nil
 	}
 	var cookieString string
 	if len(cookie) >= 1 {
@@ -81,7 +83,8 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		}
 	} else {
 		output.Status = http.StatusOK
-		return output, fmt.Errorf("No token found in cookie.")
+		log.Debug("No token found in cookie")
+		return output, nil
 	}
 
 	tokens := strings.Split(cookieString, ";")
@@ -97,11 +100,13 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		}
 	} else {
 		output.Status = http.StatusOK
-		return output, fmt.Errorf("No token found")
+		log.Debug("No token found in cookie")
+		return output, nil
 	}
 	if tokenValue == "" {
 		output.Status = http.StatusOK
-		return output, fmt.Errorf("No token found")
+		log.Debug("No token found in cookie")
+		return output, nil
 	}
 
 	//check if the token value is empty or not
@@ -123,7 +128,7 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 
 			if accountID == "" {
 				output.Status = http.StatusForbidden
-				return output, fmt.Errorf("Token is forbidden to access the projectid.")
+				return output, fmt.Errorf("Token is forbidden to access the projectid")
 			}
 
 		} else {
@@ -190,7 +195,7 @@ func getAccountAndProject(host string, envid string, token string) (string, stri
 	projectid := resp.Header.Get("X-Api-Account-Id")
 	userid := resp.Header.Get("X-Api-User-Id")
 	if projectid == "" || userid == "" {
-		err := errors.New("Token is forbidden to access the projectid.")
+		err := errors.New("Token is forbidden to access the projectid")
 		return "Forbidden", "Forbidden", err
 
 	}
@@ -242,11 +247,11 @@ func getAccountID(host string, token string) (string, error) {
 		idData, suc := messageData.Data[i].(map[string]interface{})
 		if suc {
 			if idData["id"] == "" || idData["id"] == nil {
-				return "", fmt.Errorf("Cannot extract user id.")
+				return "", fmt.Errorf("Cannot extract user id")
 			}
 			id, suc := idData["id"].(string)
 			if idData["kind"] == "" || idData["kind"] == nil {
-				return "", fmt.Errorf("Cannot extract user kind.")
+				return "", fmt.Errorf("Cannot extract user kind")
 			}
 			kind, namesuc := idData["kind"].(string)
 			if suc && namesuc {

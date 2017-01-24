@@ -107,8 +107,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	destProxy, err := newProxy(destination)
 	if err != nil {
-		log.Errorf("Error creating a reverse proxy for destination %v", destination)
-		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error creating a reverse proxy for destination %v", destination))
+		log.Errorf("Error creating a reverse proxy for destination: %v, error: %v", destination, err)
+		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error %v creating a reverse proxy for destination %v", err, destination))
 		return
 	}
 	destProxy.reverseProxy.ServeHTTP(w, r)
@@ -117,8 +117,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 func handleNotFoundRequest(w http.ResponseWriter, r *http.Request) {
 	destProxy, err := newProxy(manager.DefaultDestination)
 	if err != nil {
-		log.Errorf("Error creating a reverse proxy for destination %v", manager.DefaultDestination)
-		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error creating a reverse proxy for destination %v", manager.DefaultDestination))
+		log.Errorf("Error creating a reverse proxy for destination %v, error: %v", manager.DefaultDestination, err)
+		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error %v creating a reverse proxy for destination %v", err, manager.DefaultDestination))
 		return
 	}
 	destProxy.reverseProxy.ServeHTTP(w, r)
@@ -129,8 +129,8 @@ func reload(w http.ResponseWriter, r *http.Request) {
 	err := manager.Reload()
 	if err != nil {
 		//failed to reload the config from the config.json
-		log.Debugf("Reload failed with error %v", err)
-		returnHTTPError(w, r, http.StatusInternalServerError, "Failed to reload the proxy config")
+		log.Errorf("Reload proxy config failed with error %v", err)
+		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to reload the proxy config with error %v", err))
 		return
 	}
 	filterHandler.filterRouter = newFilterRouter(manager.ConfigFields)
