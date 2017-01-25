@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"os"
 	"regexp"
 	"sync"
@@ -20,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/rancher/websocket-proxy/k8s"
+	"github.com/rancher/websocket-proxy/proxy/apifilterproxy"
 	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
 	proxyTls "github.com/rancher/websocket-proxy/proxy/tls"
 )
@@ -212,18 +212,12 @@ func (p *pathCleaner) cleanPath(path string) string {
 
 func newCattleProxies(config *Config) (*proxyProtocolConverter, *cattleWSProxy) {
 	cattleAddr := config.CattleAddr
-	director := func(req *http.Request) {
-		req.URL.Scheme = "http"
-		req.URL.Host = cattleAddr
-	}
-	cattleProxy := &httputil.ReverseProxy{
-		Director:      director,
-		FlushInterval: time.Millisecond * 100,
-	}
+
+	apiProxyHandler := apifilterproxy.InitHandler(config.APIFilterConfigFile, cattleAddr)
 
 	reverseProxy := &proxyProtocolConverter{
-		reverseProxy: cattleProxy,
-		httpsPorts:   config.ProxyProtoHTTPSPorts,
+		httpsPorts:     config.ProxyProtoHTTPSPorts,
+		apiFilterProxy: apiProxyHandler,
 	}
 
 	wsProxy := &cattleWSProxy{
@@ -235,13 +229,13 @@ func newCattleProxies(config *Config) (*proxyProtocolConverter, *cattleWSProxy) 
 }
 
 type proxyProtocolConverter struct {
-	reverseProxy *httputil.ReverseProxy
-	httpsPorts   map[int]bool
+	httpsPorts     map[int]bool
+	apiFilterProxy *apifilterproxy.APIFiltersHandler
 }
 
 func (h *proxyProtocolConverter) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	proxyprotocol.AddHeaders(req, h.httpsPorts)
-	h.reverseProxy.ServeHTTP(rw, req)
+	h.apiFilterProxy.ServeHTTP(rw, req)
 }
 
 type cattleWSProxy struct {
