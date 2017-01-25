@@ -1,7 +1,5 @@
 package model
 
-import ()
-
 const SignatureHeader = "X-API-Auth-Signature"
 
 //FilterData defines the properties of a pre/post API filter

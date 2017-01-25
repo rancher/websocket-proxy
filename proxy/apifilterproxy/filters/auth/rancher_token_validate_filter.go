@@ -29,28 +29,26 @@ type MessageData struct {
 	Data []interface{} `json:"data,omitempty"`
 }
 
-func init() {
-	if len(os.Getenv("PROXY_CATTLE_ADDRESS")) == 0 {
-		log.Infof("PROXY_CATTLE_ADDRESS is not set, skipping init of %v API filter", name)
-		return
-	}
-	tokenFilter := &TokenValidationFilter{}
-	tokenFilter.rancherURL = "http://" + os.Getenv("PROXY_CATTLE_ADDRESS")
-
-	if err := filters.RegisterAPIFilter(name, tokenFilter); err != nil {
-		log.Fatalf("Could not register %s filter", name)
-	}
-
-	log.Infof("Configured %s API filter", tokenFilter.GetName())
-
-}
-
 type TokenValidationFilter struct {
 	rancherURL string
 }
 
 func (*TokenValidationFilter) GetName() string {
 	return name
+}
+
+func NewFilter() (filters.APIFilter, error) {
+	tokenFilter := &TokenValidationFilter{}
+
+	if len(os.Getenv("PROXY_CATTLE_ADDRESS")) == 0 {
+		log.Infof("PROXY_CATTLE_ADDRESS is not set, skipping init of %v API filter", name)
+		return tokenFilter, fmt.Errorf("PROXY_CATTLE_ADDRESS is not set, skipping init of %v API filter", name)
+	}
+
+	tokenFilter.rancherURL = "http://" + os.Getenv("PROXY_CATTLE_ADDRESS")
+
+	log.Infof("Configured %s API filter", tokenFilter.GetName())
+	return tokenFilter, nil
 }
 
 func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input model.APIRequestData) (model.APIRequestData, error) {

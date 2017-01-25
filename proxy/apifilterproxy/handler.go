@@ -11,14 +11,13 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/manager"
 	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/model"
 )
 
 var filterHandler *APIFiltersHandler
+var filterManager *FilterManager
 
 //APIFiltersHandler is a wrapper over the mux router that does the path<->filters matching
 type APIFiltersHandler struct {
@@ -30,35 +29,19 @@ func (h *APIFiltersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 //InitHandler sets the parameters necessary and initializes API Proxy handler
-func InitHandler(filterConfigFile string, cattleAddr string) (*APIFiltersHandler, bool) {
-	manager.SetConfig(filterConfigFile, cattleAddr)
-
-	router := newFilterRouter(manager.ConfigFields)
-	filterHandler = &APIFiltersHandler{filterRouter: router}
-
-	return filterHandler, manager.APIFilterProxyReady
-}
-
-func newFilterRouter(configFields manager.ConfigFileFields) *mux.Router {
-	// API framework routes
-	router := mux.NewRouter().StrictSlash(false)
-
-	for _, filter := range configFields.Prefilters {
-		//build router paths
-		for _, path := range filter.Paths {
-			for _, method := range filter.Methods {
-				log.Debugf("Adding route: %v %v", strings.ToUpper(method), path)
-				router.Methods(strings.ToUpper(method)).Path(path).HandlerFunc(http.HandlerFunc(handleRequest))
-			}
-		}
+func InitHandler(filterConfigFile string, cattleAddr string) *APIFiltersHandler {
+	var err error
+	filterManager, err = InitManager(filterConfigFile, cattleAddr)
+	if err != nil {
+		log.Errorf("Error configuring api proxy handler, %v", err)
 	}
-	router.Methods("POST").Path("/v1-api-filter-proxy/reload").HandlerFunc(http.HandlerFunc(reload))
-	router.NotFoundHandler = http.HandlerFunc(handleNotFoundRequest)
+	router := filterManager.NewFilterRouter()
 
-	return router
+	filterHandler = &APIFiltersHandler{filterRouter: router}
+	return filterHandler
 }
 
-func handleRequest(w http.ResponseWriter, r *http.Request) {
+func HandleRequest(w http.ResponseWriter, r *http.Request) {
 	path, _ := mux.CurrentRoute(r).GetPathTemplate()
 
 	log.Debugf("Request Path matched: %v", path)
@@ -87,7 +70,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	api := r.URL.Path
 
-	inputBody, inputHeaders, destination, proxyErr := manager.ProcessPreFilters(path, api, jsonInput, headerMap)
+	inputBody, inputHeaders, destination, proxyErr := filterManager.ProcessPreFilters(path, api, jsonInput, headerMap)
 	if proxyErr.Status != "" {
 		//error from some filter
 		log.Debugf("Error from proxy filter %v", proxyErr)
@@ -114,26 +97,26 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	destProxy.reverseProxy.ServeHTTP(w, r)
 }
 
-func handleNotFoundRequest(w http.ResponseWriter, r *http.Request) {
-	destProxy, err := newProxy(manager.DefaultDestination)
+func HandleNotFoundRequest(w http.ResponseWriter, r *http.Request) {
+	destProxy, err := newProxy(filterManager.cattleURL)
 	if err != nil {
-		log.Errorf("Error creating a reverse proxy for destination %v, error: %v", manager.DefaultDestination, err)
-		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error %v creating a reverse proxy for destination %v", err, manager.DefaultDestination))
+		log.Errorf("Error creating a reverse proxy for destination %v, error: %v", filterManager.cattleURL, err)
+		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Error %v creating a reverse proxy for destination %v", err, filterManager.cattleURL))
 		return
 	}
 	destProxy.reverseProxy.ServeHTTP(w, r)
 }
 
-func reload(w http.ResponseWriter, r *http.Request) {
+func Reload(w http.ResponseWriter, r *http.Request) {
 	log.Info("Reload proxy config")
-	err := manager.Reload()
+	err := filterManager.Reload()
 	if err != nil {
 		//failed to reload the config from the config.json
 		log.Errorf("Reload proxy config failed with error %v", err)
 		returnHTTPError(w, r, http.StatusInternalServerError, fmt.Sprintf("Failed to reload the proxy config with error %v", err))
 		return
 	}
-	filterHandler.filterRouter = newFilterRouter(manager.ConfigFields)
+	filterHandler.filterRouter = filterManager.NewFilterRouter()
 }
 
 //Proxy is our ReverseProxy object

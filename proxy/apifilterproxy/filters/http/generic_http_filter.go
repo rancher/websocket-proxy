@@ -9,28 +9,24 @@ import (
 
 	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/filters"
 	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/model"
-	"github.com/rancher/websocket-proxy/proxy/apifilterproxy/util"
 )
 
 const (
 	name = "http"
 )
 
-func init() {
-	httpFilter := &GenericHTTPFilter{}
-	if err := filters.RegisterAPIFilter(name, httpFilter); err != nil {
-		log.Fatalf("Could not register %s filter", name)
-	}
-
-	log.Infof("Configured %s API filter", httpFilter.GetName())
-
-}
-
 type GenericHTTPFilter struct {
 }
 
-func (*GenericHTTPFilter) GetName() string {
+func (f *GenericHTTPFilter) GetName() string {
 	return name
+}
+
+func NewFilter() (filters.APIFilter, error) {
+	httpFilter := &GenericHTTPFilter{}
+	log.Infof("Configured %s API filter", httpFilter.GetName())
+
+	return httpFilter, nil
 }
 
 func (f *GenericHTTPFilter) ProcessFilter(filter model.FilterData, input model.APIRequestData) (model.APIRequestData, error) {
@@ -40,7 +36,7 @@ func (f *GenericHTTPFilter) ProcessFilter(filter model.FilterData, input model.A
 		return output, err
 	}
 
-	log.Debugf("Request => " + string(bodyContent))
+	log.Debugf("Request => %s", bodyContent)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", filter.Endpoint, bytes.NewBuffer(bodyContent))
@@ -49,7 +45,7 @@ func (f *GenericHTTPFilter) ProcessFilter(filter model.FilterData, input model.A
 	}
 	//sign the body
 	if filter.SecretToken != "" {
-		signature := util.SignString(bodyContent, []byte(filter.SecretToken))
+		signature := filters.SignString(bodyContent, []byte(filter.SecretToken))
 		req.Header.Set(model.SignatureHeader, signature)
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -67,7 +63,8 @@ func (f *GenericHTTPFilter) ProcessFilter(filter model.FilterData, input model.A
 		return output, err
 	}
 
-	log.Debugf("Response <= " + string(byteContent))
+	log.Debugf("Response <= %s", byteContent)
+
 	json.Unmarshal(byteContent, &output)
 	output.Status = resp.StatusCode
 
