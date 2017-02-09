@@ -184,6 +184,7 @@ func (e *echoHandler) Handle(key string, initialMessage string, incomingMessages
 func getTestConfig() *proxy.Config {
 	config := &proxy.Config{
 		ListenAddr: "127.0.0.1:2223",
+		CattleAddr: "127.0.0.1:8081",
 	}
 
 	pubKey, err := proxy.ParsePublicKey("../testutils/public.pem")
