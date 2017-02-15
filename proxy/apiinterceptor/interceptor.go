@@ -134,6 +134,7 @@ func (i *interceptor) processPreFilters(path string, otherPathsMatched []string,
 		requestData.Headers = inputHeaders
 		requestData.UUID = UUID
 		requestData.APIPath = api
+		requestData.APIMethod = method
 		if envID != "" {
 			requestData.EnvID = envID
 		}

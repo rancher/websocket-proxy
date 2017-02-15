@@ -13,10 +13,11 @@ type FilterData struct {
 
 //APIRequestData defines the properties of a API Request/Response Body sent to/from a filter
 type APIRequestData struct {
-	Headers map[string][]string    `json:"headers,omitempty"`
-	Body    map[string]interface{} `json:"body,omitempty"`
-	UUID    string                 `json:"UUID,omitempty"`
-	APIPath string                 `json:"APIPath,omitempty"`
-	EnvID   string                 `json:"envID,omitempty"`
-	Status  int                    `json:"status,omitempty"`
+	Headers   map[string][]string    `json:"headers,omitempty"`
+	Body      map[string]interface{} `json:"body,omitempty"`
+	UUID      string                 `json:"UUID,omitempty"`
+	APIPath   string                 `json:"APIPath,omitempty"`
+	APIMethod string                 `json:"APIMethod,omitempty"`
+	EnvID     string                 `json:"envID,omitempty"`
+	Status    int                    `json:"status,omitempty"`
 }

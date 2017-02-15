@@ -162,6 +162,7 @@ func (i *InterceptorTestSuite) TestInterceptor(c *check.C) {
 	c.Assert(actualReq.Body, check.DeepEquals, originalBody)
 	c.Assert(actualReq.UUID, check.Not(check.Equals), "")
 	c.Assert(actualReq.APIPath, check.Equals, "/v1/services")
+	c.Assert(actualReq.APIMethod, check.Equals, "POST")
 }
 
 type mockInterceptor struct {
