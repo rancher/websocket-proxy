@@ -165,10 +165,57 @@ func (i *InterceptorTestSuite) TestInterceptor(c *check.C) {
 	c.Assert(actualReq.APIMethod, check.Equals, "POST")
 }
 
+func (i *InterceptorTestSuite) TestInterceptorError(c *check.C) {
+	// Construct the original client request
+
+	origHeaders := map[string][]string{
+		"Header1":      {"header-val-1"},
+		"Content-Type": {"application/json"},
+	}
+	originalBody := map[string]interface{}{
+		"name":   "name1",
+		"field1": "value1",
+	}
+	b := new(bytes.Buffer)
+	if err := json.NewEncoder(b).Encode(originalBody); err != nil {
+		c.Fatal("Couldn't encode request body", err)
+	}
+	req, err := http.NewRequest("POST", "http://localhost:5550/v1/services", b)
+	if err != nil {
+		c.Fatal("Couldn't create request", err)
+	}
+	req.Header.Add("header1", origHeaders["Header1"][0])
+	req.Header.Add("Content-Type", origHeaders["Content-Type"][0])
+
+	// This is the response the mockInterceptor will send back
+	// It returns a 400 error code and a message
+
+	intResp := model.APIRequestData{
+		Message: "Bad Request error from Mock Interceptor",
+	}
+	i.mockInterceptor.response = intResp
+	i.mockInterceptor.responseStatus = 400
+
+	// Perform the client request
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.Fatal("Couldn't read response: ", err)
+	}
+	// Verify the response from cattle. Since the mock cattle server just echos the request it received,
+	// the response should match the modified response.
+	cattleRespBody := map[string]interface{}{}
+	if err = json.NewDecoder(resp.Body).Decode(&cattleRespBody); err != nil {
+		c.Fatal("Coudln't decode mock cattle response: ", err)
+	}
+	c.Assert(cattleRespBody["status"], check.Equals, "400")
+	c.Assert(cattleRespBody["message"], check.Equals, "Bad Request error from Mock Interceptor")
+}
+
 type mockInterceptor struct {
 	actualRequest     *http.Request
 	actualRequestBody []byte
 	response          interface{}
+	responseStatus    int
 	c                 *check.C
 }
 
@@ -179,6 +226,9 @@ func (m *mockInterceptor) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		m.c.Fatal("Error reading body", err)
 	}
 	m.actualRequest = req
+	if m.responseStatus != 0 {
+		rw.WriteHeader(m.responseStatus)
+	}
 	json.NewEncoder(rw).Encode(m.response)
 }
 

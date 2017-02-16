@@ -20,4 +20,5 @@ type APIRequestData struct {
 	APIMethod string                 `json:"APIMethod,omitempty"`
 	EnvID     string                 `json:"envID,omitempty"`
 	Status    int                    `json:"status,omitempty"`
+	Message   string                 `json:"message,omitempty"`
 }

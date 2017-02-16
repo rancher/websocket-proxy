@@ -163,10 +163,15 @@ func (i *interceptor) processPreFilters(path string, otherPathsMatched []string,
 			}
 		} else {
 			//error
-			logrus.Errorf("Error response %v - %v while processing the interceptor %v", responseData.Status, responseData.Body, filterData)
+			logrus.Errorf("Error response %v - %v while processing the interceptor %v for request path %v", responseData.Status, responseData.Message, filterData, api)
+			message := fmt.Sprintf("Error response while processing the interceptor endpoint %v", filterData.Endpoint)
+			if responseData.Message != "" {
+				message = responseData.Message
+			}
+
 			svcErr := model.ProxyError{
 				Status:  strconv.Itoa(responseData.Status),
-				Message: fmt.Sprintf("Error response while processing the endpoint %v", filterData.Endpoint),
+				Message: message,
 			}
 
 			return inputBody, inputHeaders, nil, svcErr
