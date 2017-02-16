@@ -9,6 +9,7 @@ type FilterData struct {
 	SecretToken string   `json:"secretToken"`
 	Methods     []string `json:"methods"`
 	Paths       []string `json:"paths"`
+	Timeout     string   `json:"timeout"`
 }
 
 //APIRequestData defines the properties of a API Request/Response Body sent to/from a filter
