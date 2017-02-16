@@ -125,6 +125,12 @@ func buildRouter(configFile string, cattleRevProxy *httputil.ReverseProxy, apiFi
 
 	router.Methods("POST").Path("/v1-api-interceptor/reload").HandlerFunc(http.HandlerFunc(interceptor.reload))
 	router.NotFoundHandler = http.HandlerFunc(interceptor.cattleProxy)
+	var routes []*mux.Route
+	router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		routes = append(routes, route)
+		return nil
+	})
+	interceptor.routes = routes
 	return router, nil
 }
 

@@ -24,12 +24,24 @@ type interceptor struct {
 	apiFilters         map[string]filters.APIFilter
 	pathPreFilters     map[string][]model.FilterData
 	pathDestinations   map[string]http.Handler
+	routes             []*mux.Route
 }
 
 func (i *interceptor) intercept(w http.ResponseWriter, req *http.Request) {
 	path, _ := mux.CurrentRoute(req).GetPathTemplate()
 
-	logrus.Debugf("Request Path matched: %v", path)
+	var otherPathsMatched []string
+	for _, route := range i.routes {
+		var match mux.RouteMatch
+		if route.Match(req, &match) {
+			routePath, err := route.GetPathTemplate()
+			if err == nil && routePath != path && !containsPath(otherPathsMatched, routePath) {
+				otherPathsMatched = append(otherPathsMatched, routePath)
+			}
+		}
+	}
+
+	logrus.Debugf("Request Path matched: %v ,Other Matching paths: %v", path, otherPathsMatched)
 
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
@@ -54,11 +66,12 @@ func (i *interceptor) intercept(w http.ResponseWriter, req *http.Request) {
 	}
 
 	api := req.URL.Path
+	method := req.Method
 
-	inputBody, inputHeaders, destination, proxyErr := i.processPreFilters(path, api, jsonInput, headerMap)
+	inputBody, inputHeaders, destination, proxyErr := i.processPreFilters(path, otherPathsMatched, api, method, jsonInput, headerMap)
 	if proxyErr.Status != "" {
 		//error from some filter
-		logrus.Debugf("Error from proxy filter %v", proxyErr)
+		logrus.Debugf("Error processing request interceptor %v", proxyErr)
 		writeError(w, proxyErr)
 		return
 	}
@@ -75,13 +88,13 @@ func (i *interceptor) intercept(w http.ResponseWriter, req *http.Request) {
 	destination.ServeHTTP(w, req)
 }
 
-func (i *interceptor) processPreFilters(path string, api string, body map[string]interface{}, headers map[string][]string) (map[string]interface{}, map[string][]string, http.Handler, model.ProxyError) {
+func (i *interceptor) processPreFilters(path string, otherPathsMatched []string, api string, method string, body map[string]interface{}, headers map[string][]string) (map[string]interface{}, map[string][]string, http.Handler, model.ProxyError) {
 	destinationProxy, ok := i.pathDestinations[path]
 	if !ok {
 		destinationProxy = i.cattleReverseProxy
 	}
 
-	logrus.Debugf("START -- Processing pre filters for request path %v", path)
+	logrus.Debugf("START -- Processing requestInterceptors for request path %v method %v", api, method)
 	inputBody := body
 	inputHeaders := headers
 	//add uuid
@@ -89,30 +102,55 @@ func (i *interceptor) processPreFilters(path string, api string, body map[string
 	//envId
 	envID := extractEnvID(api)
 
-	for _, filterData := range i.pathPreFilters[path] {
-		logrus.Debugf("-- Processing pre filter %v for request path %v --", filterData, path)
+	preFilters := i.pathPreFilters[path]
+
+	for _, pathMatched := range otherPathsMatched {
+		for _, otherFilter := range i.pathPreFilters[pathMatched] {
+			//append if not duplicate
+			if !containsFilter(preFilters, otherFilter) {
+				preFilters = append(preFilters, otherFilter)
+			}
+		}
+	}
+
+	for _, filterData := range preFilters {
+		var methodMatch bool
+		methodMatch = false
+		for _, m := range filterData.Methods {
+			if strings.ToUpper(m) == method {
+				methodMatch = true
+				break
+			}
+		}
+
+		if !methodMatch {
+			continue
+		}
+
+		logrus.Debugf("-- Processing requestInterceptor %v for request path %v --", filterData, api)
 
 		requestData := model.APIRequestData{}
 		requestData.Body = inputBody
 		requestData.Headers = inputHeaders
 		requestData.UUID = UUID
 		requestData.APIPath = api
+		requestData.APIMethod = method
 		if envID != "" {
 			requestData.EnvID = envID
 		}
 
 		apiFilter, ok := i.apiFilters[filterData.Type]
 		if !ok {
-			logrus.Errorf("Skipping filter type %v doesn't exist.", filterData.Type)
+			logrus.Errorf("Skipping interceptor type %v doesn't exist.", filterData.Type)
 			continue
 		}
 
 		responseData, err := apiFilter.ProcessFilter(filterData, requestData)
 		if err != nil {
-			logrus.Errorf("Error %v processing the filter %v", err, filterData)
+			logrus.Errorf("Error %v processing the interceptor %v", err, filterData)
 			svcErr := model.ProxyError{
 				Status:  strconv.Itoa(http.StatusInternalServerError),
-				Message: fmt.Sprintf("Error %v processing the filter %v", err, filterData),
+				Message: fmt.Sprintf("Error %v processing the interceptor %v", err, filterData),
 			}
 			return inputBody, inputHeaders, nil, svcErr
 		}
@@ -125,10 +163,15 @@ func (i *interceptor) processPreFilters(path string, api string, body map[string
 			}
 		} else {
 			//error
-			logrus.Errorf("Error response %v - %v while processing the filter %v", responseData.Status, responseData.Body, filterData)
+			logrus.Errorf("Error response %v - %v while processing the interceptor %v for request path %v", responseData.Status, responseData.Message, filterData, api)
+			message := fmt.Sprintf("Error response while processing the interceptor endpoint %v", filterData.Endpoint)
+			if responseData.Message != "" {
+				message = responseData.Message
+			}
+
 			svcErr := model.ProxyError{
 				Status:  strconv.Itoa(responseData.Status),
-				Message: fmt.Sprintf("Error response while processing the endpoint %v", filterData.Endpoint),
+				Message: message,
 			}
 
 			return inputBody, inputHeaders, nil, svcErr
@@ -137,7 +180,7 @@ func (i *interceptor) processPreFilters(path string, api string, body map[string
 
 	//send the final body and headers to destination
 
-	logrus.Debugf("DONE -- Processing pre filters for request path %v, following to destination", path)
+	logrus.Debugf("DONE -- Processing requestInterceptors for request path %v", api)
 
 	return inputBody, inputHeaders, destinationProxy, model.ProxyError{}
 }
@@ -203,4 +246,22 @@ func generateUUID() string {
 	time, _ := newUUID.Time()
 	logrus.Debugf("time generated: %v", time)
 	return newUUID.String()
+}
+
+func containsPath(strs []string, newStr string) bool {
+	for _, a := range strs {
+		if a == newStr {
+			return true
+		}
+	}
+	return false
+}
+
+func containsFilter(filters []model.FilterData, newfilter model.FilterData) bool {
+	for _, a := range filters {
+		if a.Type == newfilter.Type && a.Endpoint == newfilter.Endpoint && a.SecretToken == newfilter.SecretToken {
+			return true
+		}
+	}
+	return false
 }
