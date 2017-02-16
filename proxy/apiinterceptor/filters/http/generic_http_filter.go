@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
+	"strconv"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/rancher/websocket-proxy/proxy/apiinterceptor/filters"
@@ -53,6 +55,17 @@ func (f *GenericHTTPFilter) ProcessFilter(filter model.FilterData, input model.A
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", string(len(bodyContent)))
 
+	var tout int
+	if filter.Timeout == "0" || filter.Timeout == "" {
+		tout = 15
+	} else {
+		var err error
+		tout, err = strconv.Atoi(filter.Timeout)
+		if err != nil {
+			tout = 15
+		}
+	}
+	f.client.Timeout = time.Second * time.Duration(tout)
 	resp, err := f.client.Do(req)
 	if err != nil {
 		return output, err
