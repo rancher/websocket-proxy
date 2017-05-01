@@ -123,7 +123,9 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode == 401 {
+		return "", noAuthError{}
+	} else if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("HTTP error: %s, %d", resp.Status, resp.StatusCode)
 	}
 
