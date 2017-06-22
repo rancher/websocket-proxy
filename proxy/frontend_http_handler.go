@@ -99,8 +99,8 @@ func (h *FrontendHTTPHandler) serveHTTP(rw http.ResponseWriter, req *http.Reques
 
 func (h *FrontendHTTPHandler) copyAuthHeaders(req *http.Request) {
 	c, err := req.Cookie("token")
-	if err != nil || c == nil {
-		return
+	if err != nil {
+		c = nil
 	}
 
 	authHeader := req.Header.Get("Authorization")
@@ -108,7 +108,11 @@ func (h *FrontendHTTPHandler) copyAuthHeaders(req *http.Request) {
 		return
 	}
 
-	req.Header.Set("Authorization", "Bearer "+base64.StdEncoding.EncodeToString([]byte("Bearer "+c.Value)))
+	tokenValue := "unauthorized"
+	if c != nil {
+		tokenValue = c.Value
+	}
+	req.Header.Set("Authorization", "Bearer "+base64.StdEncoding.EncodeToString([]byte("Bearer "+tokenValue)))
 }
 
 type flusher struct {
