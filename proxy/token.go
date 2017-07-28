@@ -34,7 +34,7 @@ type TokenLookup struct {
 
 func NewTokenLookup(cattleAddr string) *TokenLookup {
 	t := &TokenLookup{
-		cache:           cache.New(5*time.Minute, 30*time.Second),
+		cache:           cache.New(30*time.Second, 30*time.Second),
 		serviceProxyURL: fmt.Sprintf("http://%s/v1/serviceproxies", cattleAddr),
 	}
 	t.client.Timeout = 60 * time.Second
