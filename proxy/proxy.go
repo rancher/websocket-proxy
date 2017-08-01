@@ -15,7 +15,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/docker/docker/pkg/tlsconfig"
+	"github.com/docker/go-connections/tlsconfig"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/websocket-proxy/k8s"
