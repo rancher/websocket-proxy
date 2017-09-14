@@ -29,7 +29,7 @@ func (h *FrontendHTTPHandler) ServeHTTP(rw http.ResponseWriter, req *http.Reques
 }
 
 func (h *FrontendHTTPHandler) serveHTTP(rw http.ResponseWriter, req *http.Request) error {
-	token, hostKey, err := h.authAndLookup(req)
+	token, hostKey, err := h.AuthAndLookup(req)
 	if IsNoAuthError(err) {
 		redirect := *req.URL
 		redirect.RawQuery = "redirectTo=" + url.QueryEscape(req.URL.Path) + "#"
@@ -40,7 +40,10 @@ func (h *FrontendHTTPHandler) serveHTTP(rw http.ResponseWriter, req *http.Reques
 		http.Error(rw, "Service unavailable", 503)
 		return nil
 	}
+	return h.ServeRemoteHTTP(token, hostKey, rw, req)
+}
 
+func (h *FrontendHTTPHandler) ServeRemoteHTTP(token *jwt.Token, hostKey string, rw http.ResponseWriter, req *http.Request) error {
 	data, _ := token.Claims["proxy"].(map[string]interface{})
 	address, _ := data["address"].(string)
 	scheme, _ := data["scheme"].(string)
@@ -136,7 +139,7 @@ func (h *FrontendHTTPHandler) shouldHijack(req *http.Request) bool {
 	return req.Header.Get("Connection") == "Upgrade"
 }
 
-func (h *FrontendHTTPHandler) authAndLookup(req *http.Request) (*jwt.Token, string, error) {
+func (h *FrontendHTTPHandler) AuthAndLookup(req *http.Request) (*jwt.Token, string, error) {
 	token, hostKey, err := h.FrontendHandler.auth(req)
 	if err == nil {
 		return token, hostKey, nil
