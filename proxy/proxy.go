@@ -1,9 +1,6 @@
 package proxy
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -15,13 +12,11 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
-	"github.com/docker/go-connections/tlsconfig"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/websocket-proxy/k8s"
 	"github.com/rancher/websocket-proxy/proxy/apiinterceptor"
 	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
-	proxyTls "github.com/rancher/websocket-proxy/proxy/tls"
 )
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
@@ -60,24 +55,28 @@ func (s *Starter) StartProxy() error {
 		parsedPublicKey: s.Config.PublicKey,
 	})
 
-	frontendHTTPHandler := switcher.Wrap(&FrontendHTTPHandler{
+	frontendHTTPHandlerInner := &FrontendHTTPHandler{
 		FrontendHandler: FrontendHandler{
 			backend:         bpm,
 			parsedPublicKey: s.Config.PublicKey,
 		},
 		HTTPSPorts:  s.Config.ProxyProtoHTTPSPorts,
 		TokenLookup: NewTokenLookup(s.Config.CattleAddr),
-	})
+	}
+
+	frontendHTTPHandler := switcher.Wrap(frontendHTTPHandlerInner)
 
 	cattleProxy, cattleWsProxy, err := newCattleProxies(s.Config)
 	if err != nil {
 		log.Fatalf("Couldn't create cattle proxies: %v", err)
 	}
 
-	router := mux.NewRouter()
+	k8sHandler := switcher.Wrap(k8s.Handler(frontendHTTPHandlerInner,
+		s.Config.CattleAddr,
+		s.Config.CattleAccessKey,
+		s.Config.CattleSecretKey))
 
-	router.HandleFunc("/version", k8s.Version)
-	router.HandleFunc("/swaggerapi/api/v1", k8s.Swagger)
+	router := mux.NewRouter()
 
 	for _, p := range s.BackendPaths {
 		router.Handle(p, backendHandler).Methods("GET")
@@ -92,14 +91,14 @@ func (s *Starter) StartProxy() error {
 		router.Handle(p, statsHandler).Methods("GET")
 	}
 
-	if s.Config.CattleAddr != "" {
-		for _, p := range s.CattleWSProxyPaths {
-			router.Handle(p, cattleWsProxy)
-		}
+	for _, p := range s.CattleWSProxyPaths {
+		router.Handle(p, cattleWsProxy)
+	}
 
-		for _, p := range s.CattleProxyPaths {
-			router.Handle(p, cattleProxy)
-		}
+	router.Handle("/k8s/clusters/{clusterId}{path:.*}", k8sHandler)
+
+	for _, p := range s.CattleProxyPaths {
+		router.Handle(p, cattleProxy)
 	}
 
 	if s.Config.ParentPid != 0 {
@@ -123,13 +122,8 @@ func (s *Starter) StartProxy() error {
 		router: router,
 	}
 
-	swarmHandler := &SwarmHandler{
-		FrontendHandler: frontendHTTPHandler,
-		DefaultHandler:  pcRouter,
-	}
-
 	server := &http.Server{
-		Handler:   swarmHandler,
+		Handler:   pcRouter,
 		Addr:      s.Config.ListenAddr,
 		ConnState: proxyprotocol.StateCleanup,
 	}
@@ -141,60 +135,7 @@ func (s *Starter) StartProxy() error {
 
 	listener = &proxyprotocol.Listener{listener}
 
-	if s.Config.TLSListenAddr != "" {
-		tlsConfig, err := s.setupTLS()
-		if err != nil {
-			return err
-		}
-
-		if s.Config.TLSListenAddr == s.Config.ListenAddr {
-			listener = &proxyTls.SplitListener{
-				Listener: listener,
-				Config:   tlsConfig,
-			}
-		} else {
-			tlsListener, err := net.Listen("tcp", s.Config.TLSListenAddr)
-			if err != nil {
-				return err
-			}
-			tlsListener = &proxyprotocol.Listener{tlsListener}
-			go func() {
-				defer listener.Close()
-				log.Error(server.Serve(tls.NewListener(tlsListener, tlsConfig)))
-			}()
-		}
-	}
-
-	err = server.Serve(listener)
-	return err
-}
-
-func (s *Starter) setupTLS() (*tls.Config, error) {
-	if s.Config.CattleAccessKey == "" {
-		return nil, fmt.Errorf("No access key supplied to download cert")
-	}
-
-	certs, err := s.Config.GetCerts()
-	if err != nil {
-		return nil, err
-	}
-
-	tlsCert, err := tls.X509KeyPair(certs.Cert, certs.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	clientCas := x509.NewCertPool()
-	if !clientCas.AppendCertsFromPEM(certs.CA) {
-		return nil, err
-	}
-
-	tlsConfig := tlsconfig.ServerDefault()
-	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
-	tlsConfig.ClientCAs = clientCas
-	tlsConfig.Certificates = []tls.Certificate{tlsCert}
-
-	return tlsConfig, nil
+	return server.Serve(listener)
 }
 
 type pathCleaner struct {

@@ -25,17 +25,15 @@ const (
 )
 
 type TokenLookup struct {
-	cache            *cache.Cache
-	client           http.Client
-	cattleAccessKey  string
-	cattleServiceKey string
-	serviceProxyURL  string
+	cache           *cache.Cache
+	client          http.Client
+	serviceProxyURL string
 }
 
 func NewTokenLookup(cattleAddr string) *TokenLookup {
 	t := &TokenLookup{
 		cache:           cache.New(30*time.Second, 30*time.Second),
-		serviceProxyURL: fmt.Sprintf("http://%s/v1/serviceproxies", cattleAddr),
+		serviceProxyURL: fmt.Sprintf("http://%s/v2-beta/serviceproxies", cattleAddr),
 	}
 	t.client.Timeout = 60 * time.Second
 	return t
@@ -104,23 +102,17 @@ func (t *TokenLookup) callRancher(r *http.Request) (string, error) {
 
 	newReq.Header.Set("Content-Type", "application/json")
 
-	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
-		// Delegate auth based on TLS
-		newReq.SetBasicAuth(t.cattleAccessKey, t.cattleServiceKey)
-		newReq.Header.Set("X-API-Client-Access-Key", r.TLS.PeerCertificates[0].Subject.CommonName)
-	} else {
-		// Other forms of auth
-		newReq.Header.Set(authHeader, unwrapAuth(r.Header.Get(authHeader)))
-		newReq.Header.Set(projectHeader, r.Header.Get(projectHeader))
+	// Other forms of auth
+	newReq.Header.Set(authHeader, unwrapAuth(r.Header.Get(authHeader)))
+	newReq.Header.Set(projectHeader, r.Header.Get(projectHeader))
 
-		if project, ok := vars["project"]; ok {
-			newReq.Header.Set(projectHeader, project)
-		}
+	if project, ok := vars["project"]; ok {
+		newReq.Header.Set(projectHeader, project)
+	}
 
-		c, err := r.Cookie("token")
-		if err == nil {
-			newReq.AddCookie(c)
-		}
+	c, err := r.Cookie("token")
+	if err == nil {
+		newReq.AddCookie(c)
 	}
 
 	resp, err := t.client.Do(newReq)
