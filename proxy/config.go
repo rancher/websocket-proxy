@@ -134,7 +134,7 @@ func publicKeyDecode(keyBytes []byte) (interface{}, error) {
 }
 
 func downloadKey(addr string) ([]byte, error) {
-	url := fmt.Sprintf("http://%s/v1/scripts/api.crt", addr)
+	url := fmt.Sprintf("http://%s/v2-beta/scripts/api.crt", addr)
 	logrus.Infof("Downloading key from %s", url)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -154,7 +154,7 @@ type Certs struct {
 }
 
 func downloadCert(accessKey, secretKey, addr string) (*Certs, error) {
-	url := fmt.Sprintf("http://%s/v1/schemas", addr)
+	url := fmt.Sprintf("http://%s/v2-beta/schemas", addr)
 	c, err := client.NewRancherClient(&client.ClientOpts{
 		Url:       url,
 		AccessKey: accessKey,
