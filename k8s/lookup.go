@@ -41,7 +41,7 @@ func (c *Lookup) Lookup(input *http.Request) (*client.Cluster, bool, error) {
 		return nil, false, err
 	}
 
-	req.Header.Set("Authorization", getAuthorizationHeader(req))
+	req.SetBasicAuth(c.accessKey, c.secretKey)
 
 	cookie := getTokenCookie(input)
 	if cookie != nil {
