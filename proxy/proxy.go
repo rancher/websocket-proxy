@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -17,6 +16,7 @@ import (
 	"github.com/rancher/websocket-proxy/k8s"
 	"github.com/rancher/websocket-proxy/proxy/apiinterceptor"
 	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
+	"github.com/rancher/websocket-proxy/proxy/websocket"
 )
 
 var slashRegex = regexp.MustCompile("[/]{2,}")
@@ -71,10 +71,15 @@ func (s *Starter) StartProxy() error {
 		log.Fatalf("Couldn't create cattle proxies: %v", err)
 	}
 
-	k8sHandler := switcher.Wrap(k8s.Handler(frontendHTTPHandlerInner,
+	k8sHandler, err := k8s.Handler(frontendHTTPHandlerInner,
 		s.Config.CattleAddr,
 		s.Config.CattleAccessKey,
-		s.Config.CattleSecretKey))
+		s.Config.CattleSecretKey)
+	if err != nil {
+		log.Fatalf("Couldn't create k8s proxies: %v", err)
+	}
+
+	k8sHandler = switcher.Wrap(k8sHandler)
 
 	router := mux.NewRouter()
 
@@ -216,49 +221,10 @@ type cattleWSProxy struct {
 }
 
 func (h *cattleWSProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if len(req.Header.Get("Upgrade")) > 0 {
+	if websocket.ShouldProxy(req) {
 		proxyprotocol.AddHeaders(req, h.reverseProxy.httpsPorts)
-		h.serveWebsocket(rw, req)
+		websocket.ProxyTCP(h.cattleAddr, rw, req)
 	} else {
 		h.reverseProxy.ServeHTTP(rw, req)
 	}
-}
-
-func (h *cattleWSProxy) serveWebsocket(rw http.ResponseWriter, req *http.Request) {
-	// Inspired by https://groups.google.com/forum/#!searchin/golang-nuts/httputil.ReverseProxy$20$2B$20websockets/golang-nuts/KBx9pDlvFOc/01vn1qUyVdwJ
-	target := h.cattleAddr
-	d, err := net.Dial("tcp", target)
-	if err != nil {
-		log.WithField("error", err).Error("Error dialing websocket backend.")
-		http.Error(rw, "Unable to establish websocket connection: can't dial.", 500)
-		return
-	}
-	hj, ok := rw.(http.Hijacker)
-	if !ok {
-		http.Error(rw, "Unable to establish websocket connection: no hijacker.", 500)
-		return
-	}
-	nc, _, err := hj.Hijack()
-	if err != nil {
-		log.WithField("error", err).Error("Hijack error.")
-		http.Error(rw, "Unable to establish websocket connection: can't hijack.", 500)
-		return
-	}
-	defer nc.Close()
-	defer d.Close()
-
-	err = req.Write(d)
-	if err != nil {
-		log.WithField("error", err).Error("Error copying request to target.")
-		return
-	}
-
-	errc := make(chan error, 2)
-	cp := func(dst io.Writer, src io.Reader) {
-		_, err := io.Copy(dst, src)
-		errc <- err
-	}
-	go cp(d, nc)
-	go cp(nc, d)
-	<-errc
 }
