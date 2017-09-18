@@ -45,7 +45,7 @@ func (h *handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	vars["service"] = fmt.Sprintf("k8s-api.%s", cluster.Id)
 
-	oldAuth := req.Header.Get("Authorization")
+	//oldAuth := req.Header.Get("Authorization")
 	req.SetBasicAuth(h.accessKey, h.secretKey)
 
 	token, hostKey, err := h.frontendHTTPHandler.AuthAndLookup(req)
@@ -54,7 +54,9 @@ func (h *handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	req.Header.Set("Authorization", oldAuth)
+	//req.Header.Set("Authorization", oldAuth)
+	req.Header.Set("Authorization", "Bearer "+cluster.K8sClientConfig.BearerToken)
+	req.Header.Set("X-API-Cluster-Id", cluster.Id)
 
 	if err := h.frontendHTTPHandler.ServeRemoteHTTP(token, hostKey, rw, req); err != nil {
 		logrus.Errorf("Failed to forward request: %v", err)
