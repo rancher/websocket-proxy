@@ -19,15 +19,22 @@ type handler struct {
 	accessKey           string
 	secretKey           string
 	frontendHTTPHandler BackendAccess
+	netesProxy          *netesProxy
 }
 
-func Handler(frontendHTTPHandler BackendAccess, cattleAddr, accessKey, secretKey string) http.Handler {
+func Handler(frontendHTTPHandler BackendAccess, cattleAddr, accessKey, secretKey string) (http.Handler, error) {
+	np, err := newNetesProxy()
+	if err != nil {
+		return nil, err
+	}
+
 	return &handler{
 		lookup:              NewLookup(fmt.Sprintf("http://%s/v3/clusters", cattleAddr), accessKey, secretKey),
 		accessKey:           accessKey,
 		secretKey:           secretKey,
 		frontendHTTPHandler: frontendHTTPHandler,
-	}
+		netesProxy:          np,
+	}, nil
 }
 
 func (h *handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
@@ -39,6 +46,11 @@ func (h *handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	if cluster == nil {
 		http.Error(rw, "Failed to find cluster", http.StatusNotFound)
+		return
+	}
+
+	if cluster.Embedded {
+		h.netesProxy.Handle(rw, req)
 		return
 	}
 
