@@ -1,6 +1,9 @@
 package proxy
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -11,11 +14,13 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/docker/go-connections/tlsconfig"
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/rancher/websocket-proxy/k8s"
 	"github.com/rancher/websocket-proxy/proxy/apiinterceptor"
 	"github.com/rancher/websocket-proxy/proxy/proxyprotocol"
+	proxyTls "github.com/rancher/websocket-proxy/proxy/tls"
 	"github.com/rancher/websocket-proxy/proxy/websocket"
 )
 
@@ -140,7 +145,60 @@ func (s *Starter) StartProxy() error {
 
 	listener = &proxyprotocol.Listener{listener}
 
-	return server.Serve(listener)
+	if s.Config.TLSListenAddr != "" {
+		tlsConfig, err := s.setupTLS()
+		if err != nil {
+			return err
+		}
+
+		if s.Config.TLSListenAddr == s.Config.ListenAddr {
+			listener = &proxyTls.SplitListener{
+				Listener: listener,
+				Config:   tlsConfig,
+			}
+		} else {
+			tlsListener, err := net.Listen("tcp", s.Config.TLSListenAddr)
+			if err != nil {
+				return err
+			}
+			tlsListener = &proxyprotocol.Listener{tlsListener}
+			go func() {
+				defer listener.Close()
+				log.Error(server.Serve(tls.NewListener(tlsListener, tlsConfig)))
+			}()
+		}
+	}
+
+	err = server.Serve(listener)
+	return err
+}
+
+func (s *Starter) setupTLS() (*tls.Config, error) {
+	if s.Config.CattleAccessKey == "" {
+		return nil, fmt.Errorf("No access key supplied to download cert")
+	}
+
+	certs, err := s.Config.GetCerts()
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCert, err := tls.X509KeyPair(certs.Cert, certs.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	clientCas := x509.NewCertPool()
+	if !clientCas.AppendCertsFromPEM(certs.CA) {
+		return nil, err
+	}
+
+	tlsConfig := tlsconfig.ServerDefault()
+	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+	tlsConfig.ClientCAs = clientCas
+	tlsConfig.Certificates = []tls.Certificate{tlsCert}
+
+	return tlsConfig, nil
 }
 
 type pathCleaner struct {
