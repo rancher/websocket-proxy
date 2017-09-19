@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/rancher/websocket-proxy/proxy/websocket"
 )
@@ -23,8 +24,10 @@ func newNetesProxy() (*netesProxy, error) {
 		return nil, err
 	}
 
+	httpProxy := httputil.NewSingleHostReverseProxy(u)
+	httpProxy.FlushInterval = 100 + time.Millisecond
 	return &netesProxy{
-		httpProxy: httputil.NewSingleHostReverseProxy(u),
+		httpProxy: httpProxy,
 	}, nil
 }
 
