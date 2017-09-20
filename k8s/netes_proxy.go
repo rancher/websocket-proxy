@@ -25,7 +25,7 @@ func newNetesProxy() (*netesProxy, error) {
 	}
 
 	httpProxy := httputil.NewSingleHostReverseProxy(u)
-	httpProxy.FlushInterval = 100 + time.Millisecond
+	httpProxy.FlushInterval = 100 * time.Millisecond
 	return &netesProxy{
 		httpProxy: httpProxy,
 	}, nil
