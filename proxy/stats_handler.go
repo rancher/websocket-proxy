@@ -136,6 +136,8 @@ func (h *StatsHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			return
 		}
 	}
+
+	ws.SetReadDeadline(time.Time{})
 	for {
 		_, _, err := ws.ReadMessage()
 		if err != nil {
