@@ -204,7 +204,6 @@ type pathCleaner struct {
 func (p *pathCleaner) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if cleanedPath := p.cleanPath(req.URL.Path); cleanedPath != req.URL.Path {
 		req.URL.Path = cleanedPath
-		req.URL.Scheme = "http"
 	}
 	p.router.ServeHTTP(rw, req)
 }
