@@ -214,11 +214,6 @@ func getAccountAndProject(host string, envid string, token string, authHeaders [
 		return "Forbidden", "Forbidden", err
 
 	}
-	if projectid == userid {
-		err := errors.New("Cannot validate project id")
-		return "", "", err
-	}
-
 	log.Debugf("projectid: %v, userid: %v", projectid, userid)
 
 	return projectid, userid, nil
