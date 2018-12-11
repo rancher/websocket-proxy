@@ -122,10 +122,11 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 	if tokenValue != "" || len(authHeader) >= 1 {
 		log.Debugf("token:" + tokenValue)
 		log.Debugf("envid:" + envid)
-		projectID, accountID := "", ""
+
+		projectID, accountID, kind := "", "", ""
 		var err error
 		if envid != "" {
-			projectID, accountID, err = getAccountAndProject(f.rancherURL, envid, tokenValue, authHeader)
+			projectID, accountID, kind, err = getAccountAndProject(f.rancherURL, envid, tokenValue, authHeader)
 			if err != nil {
 				output.Status = http.StatusNotFound
 				return output, fmt.Errorf("Error getting the accountid and projectid: %v", err)
@@ -141,7 +142,7 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 			}
 
 		} else {
-			accountID, err = getAccountID(f.rancherURL, tokenValue, authHeader)
+			accountID, kind, err = getAccountID(f.rancherURL, tokenValue, authHeader)
 			if err != nil {
 				output.Status = http.StatusNotFound
 				return output, fmt.Errorf("Error getting the accountid : %v", err)
@@ -162,6 +163,7 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		}
 
 		headerBody["X-API-Account-Id"] = []string{accountID}
+		headerBody["X-API-Account-Kind"] = []string{kind}
 		if projectID != "" {
 			headerBody["X-API-Project-Id"] = []string{projectID}
 		}
@@ -176,14 +178,12 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 }
 
 //get the projectID and accountID from rancher API
-func getAccountAndProject(host string, envid string, token string, authHeaders []string) (string, string, error) {
-
+func getAccountAndProject(host string, envid string, token string, authHeaders []string) (string, string, string, error) {
 	client := &http.Client{}
 	requestURL := host + "/v2-beta/projects/" + envid + "/accounts"
-	log.Debugf("requestURL %v", requestURL)
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
+		return "", "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
 	}
 	if token != "" {
 		cookie := http.Cookie{Name: "token", Value: token}
@@ -194,98 +194,100 @@ func getAccountAndProject(host string, envid string, token string, authHeaders [
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
+		return "", "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
 	}
 	bodyText, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("Cannot read the reponse body")
+		return "", "", "", fmt.Errorf("Cannot read the reponse body")
 	}
 
+	err = checkIfAuthorized(bodyText)
+
+	if err != nil {
+		return "Unauthorized", "Unauthorized", "Unauthorized", err
+	}
+
+	projectid := resp.Header.Get("X-Api-Account-Id")
+	userid := resp.Header.Get("X-Api-User-Id")
+	kind := resp.Header.Get("X-Api-Account-Kind")
+	if projectid == "" || userid == "" {
+		err := errors.New("Token is forbidden to access the projectid")
+		return "Forbidden", "Forbidden", "Forbidden", err
+
+	}
+	log.Debugf("projectid: %v, userid: %v kind %v", projectid, userid, kind)
+
+	return projectid, userid, kind, nil
+}
+
+//get the accountID from rancher API
+func getAccountID(host string, token string, authHeaders []string) (string, string, error) {
+	client := &http.Client{}
+	requestURL := host + "/v2-beta/accounts"
+	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("Cannot get the account api [%v]", err)
+	}
+
+	if token != "" {
+		cookie := http.Cookie{Name: "token", Value: token}
+		req.AddCookie(&cookie)
+	} else {
+		req.Header["Authorization"] = authHeaders
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("Cannot setup HTTP client [%v]", err)
+	}
+	bodyText, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("Cannot read data from response body:[%v]", err)
+	}
 	err = checkIfAuthorized(bodyText)
 
 	if err != nil {
 		return "Unauthorized", "Unauthorized", err
 	}
 
-	projectid := resp.Header.Get("X-Api-Account-Id")
-	userid := resp.Header.Get("X-Api-User-Id")
-	if projectid == "" || userid == "" {
-		err := errors.New("Token is forbidden to access the projectid")
-		return "Forbidden", "Forbidden", err
-
-	}
-	log.Debugf("projectid: %v, userid: %v", projectid, userid)
-
-	return projectid, userid, nil
-}
-
-//get the accountID from rancher API
-func getAccountID(host string, token string, authHeaders []string) (string, error) {
-
-	client := &http.Client{}
-	requestURL := host + "/v2-beta/accounts"
-	req, err := http.NewRequest("GET", requestURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("Cannot get the account api [%v]", err)
-	}
-
-	if token != "" {
-		cookie := http.Cookie{Name: "token", Value: token}
-		req.AddCookie(&cookie)
-	} else {
-		req.Header["Authorization"] = authHeaders
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("Cannot setup HTTP client [%v]", err)
-	}
-	bodyText, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("Cannot read data from response body:[%v]", err)
-	}
-	err = checkIfAuthorized(bodyText)
-
-	if err != nil {
-		return "Unauthorized", err
-	}
-
 	messageData := MessageData{}
 	err = json.Unmarshal(bodyText, &messageData)
 	if err != nil {
 		err := errors.New("Cannot extract accounts JSON")
-		return "", err
+		return "", "", err
 	}
 	result := ""
+	accKind := ""
 	//get id from the data
 	for i := 0; i < len(messageData.Data); i++ {
 
 		idData, suc := messageData.Data[i].(map[string]interface{})
 		if suc {
 			if idData["id"] == "" || idData["id"] == nil {
-				return "", fmt.Errorf("Cannot extract user id")
+				return "", "", fmt.Errorf("Cannot extract user id")
 			}
 			id, suc := idData["id"].(string)
 			if idData["kind"] == "" || idData["kind"] == nil {
-				return "", fmt.Errorf("Cannot extract user kind")
+				return "", "", fmt.Errorf("Cannot extract user kind")
 			}
 			kind, namesuc := idData["kind"].(string)
+			name, _ := idData["name"].(string)
 			if suc && namesuc {
 				//if the token belongs to admin, only return the admin token
 				if kind == "admin" {
-					return id, nil
+					return id, "admin", nil
 				}
 			} else {
 				err := errors.New("Cannot extract accounts from account api")
-				return "", err
+				return "", "", err
 			}
 			result = id
-
+			accKind = name
 		}
 
 	}
 
-	return result, nil
+	return result, accKind, nil
 
 }
 
