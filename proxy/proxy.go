@@ -139,7 +139,7 @@ func (s *Starter) StartProxy() error {
 		log.Fatalf("Couldn't create listener: %s\n", err)
 	}
 
-	listener = &proxyprotocol.Listener{listener}
+	listener = &proxyprotocol.Listener{Listener: listener}
 
 	if s.Config.TLSListenAddr != "" {
 		tlsConfig, err := s.setupTLS()
@@ -157,7 +157,7 @@ func (s *Starter) StartProxy() error {
 			if err != nil {
 				return err
 			}
-			tlsListener = &proxyprotocol.Listener{tlsListener}
+			tlsListener = &proxyprotocol.Listener{Listener: tlsListener}
 			go func() {
 				defer listener.Close()
 				log.Error(server.Serve(tls.NewListener(tlsListener, tlsConfig)))
