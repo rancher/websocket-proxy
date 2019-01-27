@@ -89,9 +89,12 @@ func (i *interceptor) intercept(w http.ResponseWriter, req *http.Request) {
 }
 
 func (i *interceptor) processPreFilters(path string, otherPathsMatched []string, api string, method string, body map[string]interface{}, headers map[string][]string) (map[string]interface{}, map[string][]string, http.Handler, model.ProxyError) {
+	var destinationCattle bool
+
 	destinationProxy, ok := i.pathDestinations[path]
 	if !ok {
 		destinationProxy = i.cattleReverseProxy
+		destinationCattle = true
 	}
 
 	logrus.Debugf("START -- Processing requestInterceptors for request path %v method %v", api, method)
@@ -177,10 +180,15 @@ func (i *interceptor) processPreFilters(path string, otherPathsMatched []string,
 			return inputBody, inputHeaders, nil, svcErr
 		}
 	}
-
-	//send the final body and headers to destination
-
 	logrus.Debugf("DONE -- Processing requestInterceptors for request path %v", api)
+
+	//send the final body and headers to destination.
+	//if destination is the default Cattle: remove the headers added by authTokenValidator filter since Cattle will authenticate the request itself
+	if destinationCattle {
+		delete(inputHeaders, "X-API-Account-Id")
+		delete(inputHeaders, "X-API-Account-Kind")
+		delete(inputHeaders, "X-API-Project-Id")
+	}
 
 	return inputBody, inputHeaders, destinationProxy, model.ProxyError{}
 }
