@@ -123,33 +123,33 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		log.Debugf("token:" + tokenValue)
 		log.Debugf("envid:" + envid)
 
-		projectID, accountID, kind := "", "", ""
+		projectID, accountID, kind, name := "", "", "", ""
 		var err error
 		if envid != "" {
-			projectID, accountID, kind, err = getAccountAndProject(f.rancherURL, envid, tokenValue, authHeader)
+			projectID, accountID, kind, name, err = getAccountAndProject(f.rancherURL, envid, tokenValue, authHeader)
 			if err != nil {
 				output.Status = http.StatusNotFound
-				return output, fmt.Errorf("Error getting the accountid and projectid: %v", err)
+				return output, fmt.Errorf("error getting the accountid and projectid: %v", err)
 			}
 			if accountID == "Unauthorized" {
 				output.Status = http.StatusUnauthorized
-				return output, fmt.Errorf("Token or Auth keys expired or unauthorized")
+				return output, fmt.Errorf("token or Auth keys expired or unauthorized")
 			}
 
 			if accountID == "" {
 				output.Status = http.StatusForbidden
-				return output, fmt.Errorf("Token or Auth keys forbidden to access the projectid")
+				return output, fmt.Errorf("token or Auth keys forbidden to access the projectid")
 			}
 
 		} else {
-			accountID, kind, err = getAccountID(f.rancherURL, tokenValue, authHeader)
+			accountID, kind, name, err = getAccountID(f.rancherURL, tokenValue, authHeader)
 			if err != nil {
 				output.Status = http.StatusNotFound
-				return output, fmt.Errorf("Error getting the accountid : %v", err)
+				return output, fmt.Errorf("error getting the accountid : %v", err)
 			}
 			if accountID == "Unauthorized" {
 				output.Status = http.StatusUnauthorized
-				return output, fmt.Errorf("Token or Auth keys  expired or unauthorized")
+				return output, fmt.Errorf("token or Auth keys  expired or unauthorized")
 			}
 
 		}
@@ -167,6 +167,9 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 		if projectID != "" {
 			headerBody["X-API-Project-Id"] = []string{projectID}
 		}
+		if name != "" {
+			headerBody["X-API-Account-Name"] = []string{name}
+		}
 
 		output.Headers = headerBody
 		output.Status = http.StatusOK
@@ -178,12 +181,12 @@ func (f *TokenValidationFilter) ProcessFilter(filter model.FilterData, input mod
 }
 
 //get the projectID and accountID from rancher API
-func getAccountAndProject(host string, envid string, token string, authHeaders []string) (string, string, string, error) {
+func getAccountAndProject(host string, envid string, token string, authHeaders []string) (string, string, string, string, error) {
 	client := &http.Client{}
 	requestURL := host + "/v2-beta/projects/" + envid + "/accounts"
 	req, err := http.NewRequest("GET", requestURL, nil)
 	if err != nil {
-		return "", "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
+		return "", "", "", "", fmt.Errorf("can not connect to the rancher server. Please check the rancher server URL")
 	}
 	if token != "" {
 		cookie := http.Cookie{Name: "token", Value: token}
@@ -194,100 +197,103 @@ func getAccountAndProject(host string, envid string, token string, authHeaders [
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", "", fmt.Errorf("Cannot connect to the rancher server. Please check the rancher server URL")
+		return "", "", "", "", fmt.Errorf("can not connect to the rancher server. Please check the rancher server URL")
 	}
 	bodyText, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", "", fmt.Errorf("Cannot read the reponse body")
+		return "", "", "", "", fmt.Errorf("can not read the reponse body")
 	}
 
+	err = checkIfAuthorized(bodyText)
+
+	if err != nil {
+		return "Unauthorized", "Unauthorized", "Unauthorized", "Unauthorized", err
+	}
+
+	projectid := resp.Header.Get("X-Api-Account-Id")
+	userid := resp.Header.Get("X-Api-User-Id")
+	kind := resp.Header.Get("X-Api-Account-Kind")
+	name := resp.Header.Get("X-Api-Account-Name")
+	if projectid == "" || userid == "" {
+		err := errors.New("token is forbidden to access the projectid")
+		return "Forbidden", "Forbidden", "Forbidden", "Forbidden", err
+
+	}
+	log.Debugf("projectid: %v, userid: %v, kind %v, name %v", projectid, userid, kind, name)
+
+	return projectid, userid, kind, name, nil
+}
+
+//get the accountID from rancher API
+func getAccountID(host string, token string, authHeaders []string) (string, string, string, error) {
+	client := &http.Client{}
+	requestURL := host + "/v2-beta/accounts"
+	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return "", "", "", fmt.Errorf("can not get the account api [%v]", err)
+	}
+
+	if token != "" {
+		cookie := http.Cookie{Name: "token", Value: token}
+		req.AddCookie(&cookie)
+	} else {
+		req.Header["Authorization"] = authHeaders
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", "", fmt.Errorf("can not setup HTTP client [%v]", err)
+	}
+	bodyText, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", "", fmt.Errorf("can not read data from response body:[%v]", err)
+	}
 	err = checkIfAuthorized(bodyText)
 
 	if err != nil {
 		return "Unauthorized", "Unauthorized", "Unauthorized", err
 	}
 
-	projectid := resp.Header.Get("X-Api-Account-Id")
-	userid := resp.Header.Get("X-Api-User-Id")
-	kind := resp.Header.Get("X-Api-Account-Kind")
-	if projectid == "" || userid == "" {
-		err := errors.New("Token is forbidden to access the projectid")
-		return "Forbidden", "Forbidden", "Forbidden", err
-
-	}
-	log.Debugf("projectid: %v, userid: %v kind %v", projectid, userid, kind)
-
-	return projectid, userid, kind, nil
-}
-
-//get the accountID from rancher API
-func getAccountID(host string, token string, authHeaders []string) (string, string, error) {
-	client := &http.Client{}
-	requestURL := host + "/v2-beta/accounts"
-	req, err := http.NewRequest("GET", requestURL, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("Cannot get the account api [%v]", err)
-	}
-
-	if token != "" {
-		cookie := http.Cookie{Name: "token", Value: token}
-		req.AddCookie(&cookie)
-	} else {
-		req.Header["Authorization"] = authHeaders
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", "", fmt.Errorf("Cannot setup HTTP client [%v]", err)
-	}
-	bodyText, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", "", fmt.Errorf("Cannot read data from response body:[%v]", err)
-	}
-	err = checkIfAuthorized(bodyText)
-
-	if err != nil {
-		return "Unauthorized", "Unauthorized", err
-	}
-
 	messageData := MessageData{}
 	err = json.Unmarshal(bodyText, &messageData)
 	if err != nil {
-		err := errors.New("Cannot extract accounts JSON")
-		return "", "", err
+		err := errors.New("can not extract accounts JSON")
+		return "", "", "", err
 	}
 	result := ""
 	accKind := ""
+	accName := ""
 	//get id from the data
 	for i := 0; i < len(messageData.Data); i++ {
 
 		idData, suc := messageData.Data[i].(map[string]interface{})
 		if suc {
 			if idData["id"] == "" || idData["id"] == nil {
-				return "", "", fmt.Errorf("Cannot extract user id")
+				return "", "", "", fmt.Errorf("can not extract user id")
 			}
 			id, suc := idData["id"].(string)
 			if idData["kind"] == "" || idData["kind"] == nil {
-				return "", "", fmt.Errorf("Cannot extract user kind")
+				return "", "", "", fmt.Errorf("can not extract user kind")
 			}
 			kind, namesuc := idData["kind"].(string)
 			name, _ := idData["name"].(string)
 			if suc && namesuc {
 				//if the token belongs to admin, only return the admin token
 				if kind == "admin" {
-					return id, "admin", nil
+					return id, kind, name, nil
 				}
 			} else {
-				err := errors.New("Cannot extract accounts from account api")
-				return "", "", err
+				err := errors.New("can not extract accounts from account api")
+				return "", "", "", err
 			}
 			result = id
-			accKind = name
+			accKind = kind
+			accName = name
 		}
 
 	}
 
-	return result, accKind, nil
+	return result, accKind, accName, nil
 
 }
 
@@ -297,10 +303,10 @@ func checkIfAuthorized(bodyText []byte) error {
 	authMessage := AuthorizeData{}
 	err := json.Unmarshal(bodyText, &authMessage)
 	if err != nil {
-		return fmt.Errorf("Cannot read the reponse body")
+		return fmt.Errorf("can not read the reponse body")
 	}
 	if authMessage.Message == "Unauthorized" {
-		err = errors.New("Token is expired or unauthorized")
+		err = errors.New("token is expired or unauthorized")
 		return err
 	}
 	return nil

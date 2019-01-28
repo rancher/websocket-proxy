@@ -187,6 +187,7 @@ func (i *interceptor) processPreFilters(path string, otherPathsMatched []string,
 	if destinationCattle {
 		delete(inputHeaders, "X-API-Account-Id")
 		delete(inputHeaders, "X-API-Account-Kind")
+		delete(inputHeaders, "X-API-Account-Name")
 		delete(inputHeaders, "X-API-Project-Id")
 	}
 
