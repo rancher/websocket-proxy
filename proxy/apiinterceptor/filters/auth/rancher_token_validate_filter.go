@@ -199,6 +199,8 @@ func getAccountAndProject(host string, envid string, token string, authHeaders [
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("can not connect to the rancher server. Please check the rancher server URL")
 	}
+	defer resp.Body.Close()
+
 	bodyText, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", "", "", fmt.Errorf("can not read the reponse body")
@@ -244,6 +246,8 @@ func getAccountID(host string, token string, authHeaders []string) (string, stri
 	if err != nil {
 		return "", "", "", fmt.Errorf("can not setup HTTP client [%v]", err)
 	}
+	defer resp.Body.Close()
+
 	bodyText, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", "", fmt.Errorf("can not read data from response body:[%v]", err)
